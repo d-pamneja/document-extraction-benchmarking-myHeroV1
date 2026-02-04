@@ -721,3 +721,196 @@ body {
 .section:nth-child(5) { animation-delay: 0.25s; }
 .section:nth-child(6) { animation-delay: 0.3s; }
 .section:nth-child(7) { animation-delay: 0.35s; }
+
+/* ============ Page-Level OCR Section ============ */
+.pages-section .section-badge.highlight {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+
+.ocr-depth-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ocr-depth-icon {
+  font-size: 2rem;
+}
+
+.ocr-depth-text {
+  flex: 1;
+}
+
+.ocr-depth-text strong {
+  color: var(--accent-secondary);
+  font-size: 1rem;
+  display: block;
+  margin-bottom: var(--spacing-xs);
+}
+
+.ocr-depth-text p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.page-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.page-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: var(--transition-fast);
+}
+
+.page-card:hover {
+  border-color: var(--accent-primary);
+}
+
+.page-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.page-number-badge {
+  background: var(--accent-gradient);
+  color: white;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.page-stats {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.page-stat {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.page-stat.highlight {
+  color: var(--success);
+  font-weight: 500;
+}
+
+.page-card-content {
+  padding: var(--spacing-md);
+}
+
+.markdown-preview {
+  margin-bottom: var(--spacing-md);
+}
+
+.preview-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.markdown-code {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.images-section {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.image-annotations {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.image-annotation-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+}
+
+.image-annotation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.image-type-badge {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.image-id {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.image-context {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: var(--spacing-sm);
+  font-style: italic;
+}
+
+.bbox-info {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: 0.75rem;
+}
+
+.bbox-label {
+  color: var(--text-muted);
+}
+
+.bbox-coords {
+  font-family: monospace;
+  color: var(--info);
+}
+
+.more-pages-note {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}

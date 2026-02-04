@@ -147,6 +147,7 @@ class DocumentBenchmark {
       ${this.renderDatesSection(doc.key_dates)}
       ${this.renderDefinitionsSection(doc.definitions)}
       ${this.renderSummarySection(doc.summary)}
+      ${this.renderPagesSection(this.data.pages)}
     `;
   }
 
@@ -413,6 +414,101 @@ class DocumentBenchmark {
     `;
   }
 
+  renderPagesSection(pages) {
+    if (!pages || pages.length === 0) return '';
+
+    // Find pages with images first
+    const pagesWithImages = pages.filter(p => p.imageAnnotations && p.imageAnnotations.length > 0);
+    
+    // Select first 3 pages, prioritizing those with images
+    let selectedPages = [];
+    if (pagesWithImages.length >= 2) {
+      selectedPages = [pages[0], ...pagesWithImages.slice(0, 2)];
+    } else {
+      selectedPages = pages.slice(0, 3);
+    }
+    
+    // Remove duplicates
+    selectedPages = [...new Map(selectedPages.map(p => [p.pageNumber, p])).values()].slice(0, 3);
+
+    const totalImages = pages.reduce((acc, p) => acc + (p.imageAnnotations?.length || 0), 0);
+
+    const pageCards = selectedPages.map(page => {
+      const hasImages = page.imageAnnotations && page.imageAnnotations.length > 0;
+      const markdownPreview = this.truncate(page.markdown || '', 500);
+      
+      return `
+        <div class="page-card">
+          <div class="page-card-header">
+            <div class="page-number-badge">Page ${page.pageNumber}</div>
+            <div class="page-stats">
+              <span class="page-stat">${(page.characterCount || 0).toLocaleString()} chars</span>
+              ${hasImages ? `<span class="page-stat highlight">🖼️ ${page.imageAnnotations.length} images</span>` : ''}
+            </div>
+          </div>
+          
+          <div class="page-card-content">
+            <div class="markdown-preview">
+              <div class="preview-label">📄 Extracted Markdown</div>
+              <pre class="markdown-code">${this.escapeHtml(markdownPreview)}</pre>
+            </div>
+            
+            ${hasImages ? `
+              <div class="images-section">
+                <div class="preview-label">🖼️ Detected Images (BBox Annotations)</div>
+                <div class="image-annotations">
+                  ${page.imageAnnotations.map((img, idx) => `
+                    <div class="image-annotation-card">
+                      <div class="image-annotation-header">
+                        <span class="image-type-badge">${img.type || 'Image'}</span>
+                        <span class="image-id">ID: ${img.id || idx + 1}</span>
+                      </div>
+                      ${img.context ? `<div class="image-context">${this.truncate(img.context, 100)}</div>` : ''}
+                      <div class="bbox-info">
+                        <span class="bbox-label">Bounding Box:</span>
+                        <span class="bbox-coords">[${img.topLeft?.x?.toFixed(2) || '?'}, ${img.topLeft?.y?.toFixed(2) || '?'}] → [${img.bottomRight?.x?.toFixed(2) || '?'}, ${img.bottomRight?.y?.toFixed(2) || '?'}]</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="section pages-section">
+        <div class="section-header">
+          <h3>📄 Page-Level OCR Extraction</h3>
+          <div style="display: flex; gap: var(--spacing-sm);">
+            <span class="section-badge">${pages.length} pages</span>
+            ${totalImages > 0 ? `<span class="section-badge highlight">${totalImages} images detected</span>` : ''}
+          </div>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <div class="ocr-depth-banner">
+            <div class="ocr-depth-icon">🔬</div>
+            <div class="ocr-depth-text">
+              <strong>OCR Depth Showcase</strong>
+              <p>Each page is processed individually with full markdown extraction and bounding box annotations for images, tables, and diagrams.</p>
+            </div>
+          </div>
+          <div class="page-cards-container">
+            ${pageCards}
+          </div>
+          ${pages.length > 3 ? `
+            <div class="more-pages-note">
+              Showing 3 of ${pages.length} pages • ${(pages.reduce((acc, p) => acc + (p.characterCount || 0), 0)).toLocaleString()} total characters extracted
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }
+
   // Utility methods
   formatStyle(style) {
     if (!style) return 'N/A';
@@ -431,6 +527,13 @@ class DocumentBenchmark {
   truncate(str, maxLen) {
     if (!str) return '';
     return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   showError(message) {
