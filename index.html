@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MyHero Document AI Benchmark</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <div class="logo">
+            <span class="logo-icon">📄</span>
+            <span class="logo-text">MyHero</span>
+          </div>
+          <span class="subtitle">Document AI Benchmark</span>
+        </div>
+        <div class="header-center">
+          <!-- Document Selector -->
+          <div class="selector-group">
+            <label>📑 Document:</label>
+            <select id="documentSelect">
+              <option value="contract" data-pdf="https://sccrtc.org/wp-content/uploads/2010/09/SampleContract-Shuttle.pdf">Santa Cruz Contract (10 pages)</option>
+              <option value="fidic" data-pdf="https://example30164.wordpress.com/wp-content/uploads/2016/04/fidic-db-yellow-book.pdf">FIDIC Yellow Book (130 pages)</option>
+            </select>
+          </div>
+          <!-- Technique Selector -->
+          <div class="selector-group">
+            <label>🤖 Technique:</label>
+            <select id="techniqueSelect">
+              <option value="mistral" selected>Mistral OCR Latest</option>
+              <option value="gpt4v" disabled>GPT-4 Vision (coming)</option>
+              <option value="claude" disabled>Claude 3 Opus (coming)</option>
+              <option value="gemini" disabled>Gemini Pro Vision (coming)</option>
+            </select>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="stats-badge" id="processingStats">
+            <span class="stat-item"><span class="stat-label">Pages:</span> <span id="totalPages">-</span></span>
+            <span class="stat-divider">|</span>
+            <span class="stat-item"><span class="stat-label">Sections:</span> <span id="totalSections">-</span></span>
+            <span class="stat-divider">|</span>
+            <span class="stat-item"><span class="stat-label">Depth:</span> <span id="maxDepth">-</span></span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Left Panel: PDF Viewer -->
+        <div class="panel pdf-panel">
+          <div class="panel-header">
+            <h2>📑 Document Preview</h2>
+            <div class="pdf-controls">
+              <button id="openInTab" class="btn-secondary">Open in New Tab ↗</button>
+            </div>
+          </div>
+          <div class="panel-content pdf-container">
+            <iframe 
+              id="pdfViewer"
+              src="https://sccrtc.org/wp-content/uploads/2010/09/SampleContract-Shuttle.pdf"
+              title="PDF Document">
+            </iframe>
+          </div>
+        </div>
+
+        <!-- Right Panel: JSON Visualization -->
+        <div class="panel json-panel">
+          <div class="panel-header">
+            <h2>🔍 Extracted Structure</h2>
+            <div class="panel-actions">
+              <button id="toggleRawJson" class="btn-secondary">View Raw JSON</button>
+            </div>
+          </div>
+          <div class="panel-content" id="jsonContent">
+            <!-- Content will be dynamically loaded -->
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <p>Loading document analysis...</p>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Raw JSON Modal -->
+      <div id="rawJsonModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Raw JSON Output</h3>
+            <button id="closeModal" class="btn-icon">✕</button>
+          </div>
+          <pre id="rawJsonContent"></pre>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
