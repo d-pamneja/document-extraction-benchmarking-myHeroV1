@@ -8,7 +8,7 @@ import './style.css';
 const DOCUMENTS = {
   contract: {
     name: 'Santa Cruz Contract',
-    pdfUrl: 'https://sccrtc.org/wp-content/uploads/2010/09/SampleContract-Shuttle.pdf',
+    pdfUrl: 'https://jjzhbhdtgeimxymsftkm.supabase.co/storage/v1/object/public/test/SampleContract-Shuttle-3.pdf',
     results: {
       mistral: '/contract-mistral.json'
     }
