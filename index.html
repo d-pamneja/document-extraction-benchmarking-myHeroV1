@@ -33,7 +33,11 @@
           <div class="selector-group">
             <label>🤖 Technique:</label>
             <select id="techniqueSelect">
+              <!-- Options will be dynamically populated by JavaScript -->
+              <!-- Original default: -->
               <option value="mistral" selected>Mistral OCR Latest</option>
+              <!-- NEW: Now supports multiple techniques (mistral, ade-modify, ade-original, ade) -->
+              <!-- Populated dynamically based on selected document - see updateTechniqueOptions() in main.js -->
             </select>
           </div>
         </div>

@@ -22,15 +22,38 @@ const DOCUMENTS = {
   }
 };
 
+// ============================================
+// NEW ADDITIONS - ADE Technique Support
+// ============================================
+// This section adds ADE (Anthropic Document Extraction) technique options
+// Original code above is preserved - these are additions for new branch
+// ============================================
+
+// Extend DOCUMENTS with ADE results
+DOCUMENTS.contract.results = {
+  ...DOCUMENTS.contract.results, // Preserve original mistral
+  'ade-modify': '/contract-ade-modify.json'
+};
+
+DOCUMENTS.fidic.results = {
+  ...DOCUMENTS.fidic.results, // Preserve original mistral
+  'ade-modify': '/fidic-ade-modify.json'
+};
+
 class DocumentBenchmark {
   constructor() {
     this.data = null;
     this.currentDocument = 'contract';
     this.currentTechnique = 'mistral';
+    // NEW: Toggle for ADE format - show only hierarchy (like Mistral) or full content
+    this.adeShowHierarchyOnly = true; // Default to hierarchy only
     this.init();
   }
 
   async init() {
+    // NEW: Initialize technique options based on default document
+    this.updateTechniqueOptions();
+    
     await this.loadData();
     this.setupEventListeners();
     this.render();
@@ -48,6 +71,10 @@ class DocumentBenchmark {
       
       const response = await fetch(jsonPath);
       this.data = await response.json();
+      
+      // NEW: Store format type for rendering
+      this.dataFormat = this.isADEFormat(this.data) ? 'ade' : 'mistral';
+      
       console.log(`📄 Loaded ${config.name} with ${this.currentTechnique}:`, this.data);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -63,6 +90,9 @@ class DocumentBenchmark {
       
       // Update PDF viewer
       document.getElementById('pdfViewer').src = config.pdfUrl;
+      
+      // NEW: Update technique options based on selected document
+      this.updateTechniqueOptions();
       
       // Reload data
       await this.loadData();
@@ -104,6 +134,15 @@ class DocumentBenchmark {
       if (header) {
         header.closest('.section').classList.toggle('collapsed');
       }
+      
+      // NEW: ADE toggle view button
+      if (e.target.id === 'adeToggleView') {
+        this.adeShowHierarchyOnly = !this.adeShowHierarchyOnly;
+        // Re-render ADE visualization
+        if (this.dataFormat === 'ade') {
+          this.render();
+        }
+      }
     });
   }
 
@@ -119,18 +158,33 @@ class DocumentBenchmark {
   render() {
     if (!this.data) return;
 
-    const doc = this.data.documentAnnotation;
-    
-    // Update stats
-    document.getElementById('totalPages').textContent = this.data.metadata?.totalPages || '-';
-    document.getElementById('totalSections').textContent = 
-      doc?.structural_hierarchy?.length || '-';
-    document.getElementById('maxDepth').textContent = 
-      doc?.numbering_convention?.max_depth ? `L${doc.numbering_convention.max_depth}` : '-';
+    // NEW: Handle different formats (Mistral vs ADE)
+    if (this.dataFormat === 'ade') {
+      // Update stats for ADE format
+      document.getElementById('totalPages').textContent = this.data.total_pages || '-';
+      document.getElementById('totalSections').textContent = 
+        this.data.total_sections || (this.data.sections?.length || '-');
+      document.getElementById('maxDepth').textContent = 
+        this.getADEMaxDepth(this.data.sections) || '-';
 
-    // Render JSON visualization
-    const container = document.getElementById('jsonContent');
-    container.innerHTML = this.renderVisualization();
+      // Render ADE visualization
+      const container = document.getElementById('jsonContent');
+      container.innerHTML = this.renderADEVisualization();
+    } else {
+      // Original Mistral format
+      const doc = this.data.documentAnnotation;
+      
+      // Update stats
+      document.getElementById('totalPages').textContent = this.data.metadata?.totalPages || '-';
+      document.getElementById('totalSections').textContent = 
+        doc?.structural_hierarchy?.length || '-';
+      document.getElementById('maxDepth').textContent = 
+        doc?.numbering_convention?.max_depth ? `L${doc.numbering_convention.max_depth}` : '-';
+
+      // Render JSON visualization
+      const container = document.getElementById('jsonContent');
+      container.innerHTML = this.renderVisualization();
+    }
   }
 
   renderVisualization() {
@@ -148,6 +202,138 @@ class DocumentBenchmark {
       ${this.renderDefinitionsSection(doc.definitions)}
       ${this.renderSummarySection(doc.summary)}
       ${this.renderPagesSection(this.data.pages)}
+    `;
+  }
+
+  // ============================================
+  // NEW METHOD - ADE Format Visualization
+  // ============================================
+  // Renders ADE format exactly as it appears in JSON
+  // No transformation - shows raw structure
+  // ============================================
+  renderADEVisualization() {
+    if (!this.data || !this.data.sections) {
+      return '<p class="text-muted">No sections available</p>';
+    }
+
+    return `
+      ${this.renderADEMetadataSection()}
+      ${this.renderADEHierarchySection(this.data.sections)}
+    `;
+  }
+
+  getADEMaxDepth(sections) {
+    if (!sections || sections.length === 0) return '-';
+    
+    let maxDepth = 0;
+    const findMaxDepth = (sections, currentDepth = 0) => {
+      sections.forEach(section => {
+        const depth = section.level !== undefined ? section.level + 1 : currentDepth + 1;
+        maxDepth = Math.max(maxDepth, depth);
+        if (section.subsections && section.subsections.length > 0) {
+          findMaxDepth(section.subsections, depth);
+        }
+      });
+    };
+    
+    findMaxDepth(sections);
+    return maxDepth > 0 ? `L${maxDepth}` : '-';
+  }
+
+  renderADEMetadataSection() {
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>📋 Document Information</h3>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <div class="data-row">
+            <span class="data-label">Document</span>
+            <span class="data-value">${this.data.document || 'N/A'}</span>
+          </div>
+          <div class="data-row">
+            <span class="data-label">Total Sections</span>
+            <span class="data-value">${this.data.total_sections || this.data.sections?.length || 'N/A'}</span>
+          </div>
+          <div class="data-row">
+            <span class="data-label">Total Subsections</span>
+            <span class="data-value">${this.data.total_subsections || 'N/A'}</span>
+          </div>
+          <div class="data-row">
+            <span class="data-label">Technique</span>
+            <span class="data-value" style="color: var(--accent-secondary)">${this.currentTechnique}</span>
+          </div>
+          <div class="data-row" style="margin-top: var(--spacing-md); padding-top: var(--spacing-md); border-top: 1px solid var(--border-subtle);">
+            <span class="data-label">View Mode</span>
+            <button id="adeToggleView" class="btn-secondary" style="margin-left: auto;">
+              ${this.adeShowHierarchyOnly ? '📋 Show Full Content' : '📑 Show Hierarchy Only'}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderADEHierarchySection(sections) {
+    if (!sections || sections.length === 0) return '';
+
+    const renderSection = (section) => {
+      const indent = section.level !== undefined ? section.level * 16 : 0;
+      
+      // NEW: In hierarchy mode, show full title but let CSS handle truncation for single line
+      const displayTitle = section.title || '';
+      
+      // NEW: Ensure single line display with proper overflow handling for hierarchy mode
+      const itemStyle = this.adeShowHierarchyOnly 
+        ? `padding-left: ${indent}px; align-items: center !important;`
+        : `padding-left: ${indent}px;`;
+      
+      const titleStyle = this.adeShowHierarchyOnly 
+        ? 'min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;'
+        : '';
+      
+      let html = `
+        <div class="hierarchy-item" style="${itemStyle}">
+          <span class="hierarchy-number" style="flex-shrink: 0;">${section.number || ''}</span>
+          <span class="hierarchy-title" style="${titleStyle}">${this.escapeHtml(displayTitle)}</span>
+          <span class="level-badge" style="flex-shrink: 0; margin-left: auto;">L${section.level !== undefined ? section.level + 1 : 1}</span>
+        </div>
+      `;
+
+      // NEW: Only show content if toggle is set to show full content
+      if (!this.adeShowHierarchyOnly && section.content) {
+        html += `
+          <div class="section-content-text" style="padding-left: ${indent + 20}px; margin-top: 8px; margin-bottom: 16px; color: var(--text-secondary); font-size: 0.9rem;">
+            ${this.escapeHtml(this.truncate(section.content, 300))}
+          </div>
+        `;
+      }
+
+      if (section.subsections && section.subsections.length > 0) {
+        section.subsections.forEach(subsection => {
+          html += renderSection(subsection);
+        });
+      }
+
+      return html;
+    };
+
+    const hierarchyHtml = sections.map(section => renderSection(section)).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>📑 Document Structure (ADE Format)</h3>
+          <span class="section-badge">${this.data.total_sections || sections.length} sections</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <div class="hierarchy-tree">
+            ${hierarchyHtml}
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -542,6 +728,55 @@ class DocumentBenchmark {
         <p>⚠️ ${message}</p>
       </div>
     `;
+  }
+
+  // ============================================
+  // NEW METHOD - ADE Format Detection
+  // ============================================
+  // Checks if data is in ADE format (has 'sections' array)
+  // Original code above is preserved - this is addition for ADE support
+  // ============================================
+  
+  isADEFormat(data) {
+    // Check if data is in ADE format (has 'sections' array instead of 'documentAnnotation')
+    return data && !data.documentAnnotation && Array.isArray(data.sections);
+  }
+
+  // ============================================
+  // NEW METHOD - Dynamic Technique Options
+  // ============================================
+  // Updates the technique selector dropdown based on available techniques
+  // for the currently selected document
+  // ============================================
+  updateTechniqueOptions() {
+    const config = DOCUMENTS[this.currentDocument];
+    const techniqueSelect = document.getElementById('techniqueSelect');
+    const availableTechniques = config.results || {};
+    
+    // Technique display names mapping
+    const techniqueNames = {
+      'mistral': 'Mistral OCR Latest',
+      'ade-modify': 'ADE Modify'
+    };
+    
+    // Clear existing options
+    techniqueSelect.innerHTML = '';
+    
+    // Add options for available techniques
+    Object.keys(availableTechniques).forEach(techKey => {
+      const option = document.createElement('option');
+      option.value = techKey;
+      option.textContent = techniqueNames[techKey] || techKey;
+      
+      // Set as selected if it matches current technique (if available) or first option
+      if (techKey === this.currentTechnique || 
+          (techniqueSelect.options.length === 0 && techKey === Object.keys(availableTechniques)[0])) {
+        option.selected = true;
+        this.currentTechnique = techKey;
+      }
+      
+      techniqueSelect.appendChild(option);
+    });
   }
 }
 
