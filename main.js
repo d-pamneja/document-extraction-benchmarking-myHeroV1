@@ -61,6 +61,10 @@ class DocumentBenchmark {
 
   async loadData() {
     try {
+      if (this._pageObserver) {
+        this._pageObserver.disconnect();
+        this._pageObserver = null;
+      }
       this.showLoading();
       const config = DOCUMENTS[this.currentDocument];
       const jsonPath = config.results[this.currentTechnique];
@@ -184,6 +188,7 @@ class DocumentBenchmark {
       // Render JSON visualization
       const container = document.getElementById('jsonContent');
       container.innerHTML = this.renderVisualization();
+      this.setupPageObserver();
     }
   }
 
@@ -193,6 +198,8 @@ class DocumentBenchmark {
 
     return `
       ${this.renderMetadataSection(doc)}
+      ${this.renderCostSection()}
+      ${this.renderBlockSegmentationSection()}
       ${this.renderPartiesSection(doc.parties)}
       ${this.renderNumberingSection(doc.numbering_convention)}
       ${this.renderHierarchySection(doc.structural_hierarchy)}
@@ -338,13 +345,21 @@ class DocumentBenchmark {
   }
 
   renderMetadataSection(doc) {
+    const approach = this.getApproach();
+    const badgeClass = approach.pass === '2-Pass' ? 'approach-2pass' : 'approach-1pass';
+
     return `
       <div class="section">
         <div class="section-header">
           <h3>📋 Document Metadata</h3>
+          <span class="approach-badge ${badgeClass}">${approach.pass}</span>
           <span class="section-toggle">▼</span>
         </div>
         <div class="section-content">
+          <div class="approach-banner ${badgeClass}">
+            <strong>${approach.pass} Extraction</strong>
+            <p>${approach.label}</p>
+          </div>
           <div class="data-row">
             <span class="data-label">Title</span>
             <span class="data-value">${doc.title || 'N/A'}</span>
@@ -356,6 +371,10 @@ class DocumentBenchmark {
           <div class="data-row">
             <span class="data-label">Language</span>
             <span class="data-value">${doc.language || 'N/A'}</span>
+          </div>
+          <div class="data-row">
+            <span class="data-label">Schema Version</span>
+            <span class="data-value" style="color: var(--accent-secondary)">${approach.schema}</span>
           </div>
           <div class="data-row">
             <span class="data-label">Pages</span>
@@ -372,6 +391,164 @@ class DocumentBenchmark {
           <div class="data-row">
             <span class="data-label">Model</span>
             <span class="data-value" style="color: var(--accent-secondary)">${this.data.metadata?.model || 'N/A'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderCostSection() {
+    const cost = this.data.metadata?.cost;
+    const totalPages = this.data.metadata?.totalPages || 0;
+    const time = this.data.metadata?.processingTime;
+    const approach = this.getApproach();
+
+    if (approach.pass === '2-Pass' && cost) {
+      return `
+        <div class="section">
+          <div class="section-header">
+            <h3>💰 Cost & Processing</h3>
+            <span class="section-badge">$${cost.total.toFixed(4)}</span>
+            <span class="section-toggle">▼</span>
+          </div>
+          <div class="section-content">
+            <div class="cost-summary-grid">
+              <div class="cost-card cost-card-total">
+                <div class="cost-card-value">$${cost.total.toFixed(4)}</div>
+                <div class="cost-card-label">Total Cost</div>
+              </div>
+              <div class="cost-card">
+                <div class="cost-card-value">$${cost.perPage.toFixed(4)}</div>
+                <div class="cost-card-label">Per Page</div>
+              </div>
+              <div class="cost-card">
+                <div class="cost-card-value">${time?.total || 'N/A'}</div>
+                <div class="cost-card-label">Total Time</div>
+              </div>
+              <div class="cost-card">
+                <div class="cost-card-value">${totalPages}</div>
+                <div class="cost-card-label">Pages</div>
+              </div>
+            </div>
+            <div class="cost-pass-section">
+              <div class="cost-pass-card">
+                <div class="cost-pass-header">Pass 1: OCR</div>
+                <div class="cost-pass-details">
+                  <span>$${cost.pass1.cost.toFixed(4)}</span>
+                  <span class="cost-pass-meta">${cost.pass1.pages} pages @ $${cost.rates.ocrAnnotatedPerPage}/page</span>
+                  <span class="cost-pass-meta">Time: ${time?.pass1 || 'N/A'}</span>
+                </div>
+              </div>
+              <div class="cost-pass-card">
+                <div class="cost-pass-header">Pass 2: LLM Structuring</div>
+                <div class="cost-pass-details">
+                  <span>$${cost.pass2.cost.toFixed(6)}</span>
+                  <span class="cost-pass-meta">${(cost.pass2.promptTokens / 1000).toFixed(1)}K input + ${(cost.pass2.completionTokens / 1000).toFixed(1)}K output tokens</span>
+                  <span class="cost-pass-meta">Time: ${time?.pass2 || 'N/A'}</span>
+                  <span class="cost-pass-meta">Rates: $${cost.rates.mistralLargeInputPerM}/M input, $${cost.rates.mistralLargeOutputPerM}/M output</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 1-Pass estimated cost
+    const estimatedPerPage = 0.003;
+    const estimatedTotal = totalPages * estimatedPerPage;
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>💰 Cost & Processing</h3>
+          <span class="section-badge">~$${estimatedTotal.toFixed(2)}</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <div class="cost-summary-grid">
+            <div class="cost-card cost-card-total">
+              <div class="cost-card-value">~$${estimatedTotal.toFixed(2)}</div>
+              <div class="cost-card-label">Estimated Total</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card-value">$${estimatedPerPage.toFixed(3)}</div>
+              <div class="cost-card-label">Per Page</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card-value">N/A</div>
+              <div class="cost-card-label">Total Time</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card-value">${totalPages}</div>
+              <div class="cost-card-label">Pages</div>
+            </div>
+          </div>
+          <div class="cost-estimate-note">
+            Estimated at $${estimatedPerPage}/page Mistral OCR rate. No processing time data available for this schema version.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderBlockSegmentationSection() {
+    const stats = this.data.blockStats;
+    if (!stats) return '';
+
+    const breakdown = stats.blockTypeBreakdown || {};
+    const sorted = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
+    const maxCount = sorted.length > 0 ? sorted[0][1] : 1;
+    const totalBlocks = stats.totalBlocks || 0;
+    const typeCount = sorted.length;
+    const pagesProcessed = stats.pagesProcessed || 0;
+    const avgPerPage = pagesProcessed > 0 ? (totalBlocks / pagesProcessed).toFixed(1) : '0';
+
+    const colors = ['#8b5cf6', '#6366f1', '#3b82f6', '#06b6d4', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#ec4899'];
+
+    const bars = sorted.map(([type, count], i) => {
+      const pct = ((count / totalBlocks) * 100).toFixed(1);
+      const widthPct = ((count / maxCount) * 100).toFixed(1);
+      const color = colors[i % colors.length];
+      return `
+        <div class="block-type-row">
+          <span class="block-type-label">${type.replace(/_/g, ' ')}</span>
+          <div class="block-type-bar-container">
+            <div class="block-type-bar" style="width: ${widthPct}%; background: ${color};"></div>
+          </div>
+          <span class="block-type-count">${count}</span>
+          <span class="block-type-pct">${pct}%</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>🧱 Block Segmentation</h3>
+          <span class="section-badge">${totalBlocks} blocks</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <div class="block-stats-summary">
+            <div class="block-stat-card">
+              <div class="block-stat-value">${totalBlocks}</div>
+              <div class="block-stat-label">Total Blocks</div>
+            </div>
+            <div class="block-stat-card">
+              <div class="block-stat-value">${typeCount}</div>
+              <div class="block-stat-label">Block Types</div>
+            </div>
+            <div class="block-stat-card">
+              <div class="block-stat-value">${pagesProcessed}</div>
+              <div class="block-stat-label">Pages Processed</div>
+            </div>
+            <div class="block-stat-card">
+              <div class="block-stat-value">${avgPerPage}</div>
+              <div class="block-stat-label">Blocks/Page Avg</div>
+            </div>
+          </div>
+          <div class="block-type-chart">
+            ${bars}
           </div>
         </div>
       </div>
@@ -603,62 +780,32 @@ class DocumentBenchmark {
   renderPagesSection(pages) {
     if (!pages || pages.length === 0) return '';
 
-    // Find pages with images first
-    const pagesWithImages = pages.filter(p => p.imageAnnotations && p.imageAnnotations.length > 0);
-    
-    // Select first 3 pages, prioritizing those with images
-    let selectedPages = [];
-    if (pagesWithImages.length >= 2) {
-      selectedPages = [pages[0], ...pagesWithImages.slice(0, 2)];
-    } else {
-      selectedPages = pages.slice(0, 3);
-    }
-    
-    // Remove duplicates
-    selectedPages = [...new Map(selectedPages.map(p => [p.pageNumber, p])).values()].slice(0, 3);
+    this.pagesData = pages;
+    const totalImages = pages.reduce((acc, p) => {
+      const np = this.normalizePage(p);
+      return acc + np.images.length;
+    }, 0);
+    const totalChars = pages.reduce((acc, p) => acc + (p.characterCount || 0), 0);
 
-    const totalImages = pages.reduce((acc, p) => acc + (p.imageAnnotations?.length || 0), 0);
-
-    const pageCards = selectedPages.map(page => {
-      const hasImages = page.imageAnnotations && page.imageAnnotations.length > 0;
-      const markdownPreview = this.truncate(page.markdown || '', 500);
-      
+    const skeletonCards = pages.map((page, idx) => {
+      const np = this.normalizePage(page);
       return `
-        <div class="page-card">
+        <div class="page-card page-skeleton" data-page-index="${idx}">
           <div class="page-card-header">
-            <div class="page-number-badge">Page ${page.pageNumber}</div>
+            <div class="page-number-badge">Page ${np.pageNum}</div>
             <div class="page-stats">
-              <span class="page-stat">${(page.characterCount || 0).toLocaleString()} chars</span>
-              ${hasImages ? `<span class="page-stat highlight">🖼️ ${page.imageAnnotations.length} images</span>` : ''}
+              <span class="page-stat">${np.characterCount.toLocaleString()} chars</span>
+              ${np.images.length > 0 ? `<span class="page-stat highlight">🖼️ ${np.images.length} images</span>` : ''}
             </div>
           </div>
-          
           <div class="page-card-content">
-            <div class="markdown-preview">
-              <div class="preview-label">📄 Extracted Markdown</div>
-              <pre class="markdown-code">${this.escapeHtml(markdownPreview)}</pre>
+            <div class="page-skeleton-placeholder">
+              <div class="skeleton-line skeleton-line-long"></div>
+              <div class="skeleton-line skeleton-line-medium"></div>
+              <div class="skeleton-line skeleton-line-short"></div>
+              <div class="skeleton-line skeleton-line-long"></div>
+              <div class="skeleton-line skeleton-line-medium"></div>
             </div>
-            
-            ${hasImages ? `
-              <div class="images-section">
-                <div class="preview-label">🖼️ Detected Images (BBox Annotations)</div>
-                <div class="image-annotations">
-                  ${page.imageAnnotations.map((img, idx) => `
-                    <div class="image-annotation-card">
-                      <div class="image-annotation-header">
-                        <span class="image-type-badge">${img.type || 'Image'}</span>
-                        <span class="image-id">ID: ${img.id || idx + 1}</span>
-                      </div>
-                      ${img.context ? `<div class="image-context">${this.truncate(img.context, 100)}</div>` : ''}
-                      <div class="bbox-info">
-                        <span class="bbox-label">Bounding Box:</span>
-                        <span class="bbox-coords">[${img.topLeft?.x?.toFixed(2) || '?'}, ${img.topLeft?.y?.toFixed(2) || '?'}] → [${img.bottomRight?.x?.toFixed(2) || '?'}, ${img.bottomRight?.y?.toFixed(2) || '?'}]</span>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
           </div>
         </div>
       `;
@@ -678,21 +825,137 @@ class DocumentBenchmark {
           <div class="ocr-depth-banner">
             <div class="ocr-depth-icon">🔬</div>
             <div class="ocr-depth-text">
-              <strong>OCR Depth Showcase</strong>
-              <p>Each page is processed individually with full markdown extraction and bounding box annotations for images, tables, and diagrams.</p>
+              <strong>All ${pages.length} Pages — Lazy Loaded</strong>
+              <p>${totalChars.toLocaleString()} total characters extracted. Each page loads as you scroll.</p>
             </div>
           </div>
           <div class="page-cards-container">
-            ${pageCards}
+            ${skeletonCards}
           </div>
-          ${pages.length > 3 ? `
-            <div class="more-pages-note">
-              Showing 3 of ${pages.length} pages • ${(pages.reduce((acc, p) => acc + (p.characterCount || 0), 0)).toLocaleString()} total characters extracted
-            </div>
-          ` : ''}
         </div>
       </div>
     `;
+  }
+
+  renderFullPageCard(idx) {
+    const page = this.pagesData[idx];
+    if (!page) return '';
+    const np = this.normalizePage(page);
+    const markdownPreview = this.truncate(np.markdown, 800);
+    const hasImages = np.images.length > 0;
+
+    let imagesHtml = '';
+    if (hasImages) {
+      // Handle both v1 (images with imageId) and v2 (imageAnnotations with bbox) schemas
+      const imageCards = np.images.map((img, i) => {
+        const hasBbox = img.topLeft && img.bottomRight;
+        return `
+          <div class="image-annotation-card">
+            <div class="image-annotation-header">
+              <span class="image-type-badge">${img.type || 'Image'}</span>
+              <span class="image-id">ID: ${img.id || img.imageId || i + 1}</span>
+            </div>
+            ${img.context ? `<div class="image-context">${this.truncate(img.context, 100)}</div>` : ''}
+            ${hasBbox ? `
+              <div class="bbox-info">
+                <span class="bbox-label">Bounding Box:</span>
+                <span class="bbox-coords">[${img.topLeft.x?.toFixed(2)}, ${img.topLeft.y?.toFixed(2)}] → [${img.bottomRight.x?.toFixed(2)}, ${img.bottomRight.y?.toFixed(2)}]</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      imagesHtml = `
+        <div class="images-section">
+          <div class="preview-label">🖼️ Detected Images (${np.images.length})</div>
+          <div class="image-annotations">${imageCards}</div>
+        </div>
+      `;
+    }
+
+    let dimensionsHtml = '';
+    if (np.dimensions) {
+      dimensionsHtml = `
+        <div class="page-dimensions">
+          <span class="preview-label">📐 Dimensions</span>
+          <span>${np.dimensions.width} × ${np.dimensions.height} @ ${np.dimensions.dpi}dpi</span>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="page-card-header">
+        <div class="page-number-badge">Page ${np.pageNum}</div>
+        <div class="page-stats">
+          <span class="page-stat">${np.characterCount.toLocaleString()} chars</span>
+          ${hasImages ? `<span class="page-stat highlight">🖼️ ${np.images.length} images</span>` : ''}
+        </div>
+      </div>
+      <div class="page-card-content">
+        <div class="markdown-preview">
+          <div class="preview-label">📄 Extracted Markdown</div>
+          <pre class="markdown-code">${this.escapeHtml(markdownPreview)}</pre>
+        </div>
+        ${imagesHtml}
+        ${dimensionsHtml}
+      </div>
+    `;
+  }
+
+  setupPageObserver() {
+    if (this._pageObserver) {
+      this._pageObserver.disconnect();
+      this._pageObserver = null;
+    }
+
+    const scrollRoot = document.getElementById('jsonContent');
+    if (!scrollRoot) return;
+
+    const skeletons = scrollRoot.querySelectorAll('.page-skeleton[data-page-index]');
+    if (skeletons.length === 0) return;
+
+    this._pageObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const card = entry.target;
+          const idx = parseInt(card.getAttribute('data-page-index'), 10);
+          card.innerHTML = this.renderFullPageCard(idx);
+          card.classList.remove('page-skeleton');
+          card.classList.add('page-card-loaded');
+          this._pageObserver.unobserve(card);
+        }
+      });
+    }, {
+      root: scrollRoot,
+      rootMargin: '200px 0px'
+    });
+
+    skeletons.forEach(el => this._pageObserver.observe(el));
+  }
+
+  // ============================================
+  // Utility: Normalize page schema differences
+  // ============================================
+  normalizePage(page) {
+    return {
+      pageNum: page.pageNumber ?? (page.pageIndex + 1),
+      markdown: page.markdown || '',
+      images: page.imageAnnotations || page.images || [],
+      characterCount: page.characterCount || 0,
+      dimensions: page.dimensions || null
+    };
+  }
+
+  // ============================================
+  // Utility: Determine extraction approach
+  // ============================================
+  getApproach() {
+    const schema = this.data?.metadata?.schemaVersion;
+    if (schema === 'myhero-v2') {
+      return { pass: '2-Pass', label: 'Pass 1: OCR extracts raw markdown. Pass 2: Mistral Large LLM structures content into typed blocks with hierarchy and formatting metadata', schema };
+    }
+    return { pass: '1-Pass', label: 'Single-pass OCR extraction \u2013 extracts markdown and annotations in one shot', schema: schema || 'myhero-v1' };
   }
 
   // Utility methods
