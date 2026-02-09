@@ -85,8 +85,8 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-md) var(--spacing-lg);
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
   min-height: 64px;
 }
 
@@ -109,15 +109,15 @@ body {
 }
 
 .selector-group label {
-  color: var(--text-secondary);
+  color: #6b7280;
   font-size: 0.85rem;
   font-weight: 500;
 }
 
 .selector-group select {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  color: #111827;
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
@@ -138,9 +138,15 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
   font-size: 1.4rem;
   font-weight: 700;
+}
+
+.logo-image {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
 }
 
 .logo-icon {
@@ -155,7 +161,7 @@ body {
 }
 
 .subtitle {
-  color: var(--text-muted);
+  color: #6b7280;
   font-size: 0.9rem;
   font-weight: 400;
 }
@@ -196,7 +202,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  background: var(--bg-tertiary);
+  background: var(--accent-gradient);
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
   font-size: 0.85rem;
@@ -205,14 +211,15 @@ body {
 .stat-item {
   display: flex;
   gap: 4px;
+  color: #ffffff;
 }
 
 .stat-label {
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .stat-divider {
-  color: var(--border-color);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* ============ Main Content ============ */
@@ -702,6 +709,37 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-primary);
+}
+
+/* ============ Footer ============ */
+.footer {
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.footer-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.footer-branding {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.footer-logo {
+  height: 24px;
+  width: auto;
+  object-fit: contain;
+}
+
+.footer-text {
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 400;
 }
 
 /* ============ Animations ============ */
