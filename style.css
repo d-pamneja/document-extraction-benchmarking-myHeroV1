@@ -202,7 +202,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  background: var(--bg-tertiary);
+  background: var(--accent-gradient);
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
   font-size: 0.85rem;
@@ -211,14 +211,15 @@ body {
 .stat-item {
   display: flex;
   gap: 4px;
+  color: #ffffff;
 }
 
 .stat-label {
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .stat-divider {
-  color: var(--border-color);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* ============ Main Content ============ */
