@@ -225,6 +225,7 @@ class DocumentBenchmark {
 
     return `
       ${this.renderADEMetadataSection()}
+      ${this.renderADECostSection()}
       ${this.renderADEHierarchySection(this.data.sections)}
     `;
   }
@@ -276,6 +277,49 @@ class DocumentBenchmark {
             <button id="adeToggleView" class="btn-secondary" style="margin-left: auto;">
               ${this.adeShowHierarchyOnly ? '📋 Show Full Content' : '📑 Show Hierarchy Only'}
             </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderADECostSection() {
+    if (this.currentTechnique !== 'ade-modify') {
+      return '';
+    }
+
+    const pages = 10;
+    const perPageCost = 0.03;
+    const totalCost = pages * perPageCost;
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>💰 Cost & Processing</h3>
+          <span class="section-badge">$${totalCost.toFixed(2)}</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <div class="cost-summary-grid">
+            <div class="cost-card cost-card-total">
+              <div class="cost-card-value">$${totalCost.toFixed(2)}</div>
+              <div class="cost-card-label">Total Cost</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card-value">$${perPageCost.toFixed(2)}</div>
+              <div class="cost-card-label">Per Page</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card-value">N/A</div>
+              <div class="cost-card-label">Total Time</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-card-value">${pages}</div>
+              <div class="cost-card-label">Pages</div>
+            </div>
+          </div>
+          <div class="cost-estimate-note">
+            ADE2-parse uses 3 credits per page at $0.01 per credit. $0.03 per page, $0.30 total for 10 pages.
           </div>
         </div>
       </div>
