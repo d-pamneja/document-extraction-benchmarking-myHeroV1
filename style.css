@@ -712,8 +712,8 @@ body {
 
 /* ============ Footer ============ */
 .footer {
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
   padding: var(--spacing-md) var(--spacing-lg);
 }
 
@@ -736,7 +736,7 @@ body {
 }
 
 .footer-text {
-  color: var(--text-muted);
+  color: #374151;
   font-size: 0.85rem;
   font-weight: 400;
 }
