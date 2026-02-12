@@ -205,29 +205,123 @@ body {
   color: rgba(255, 255, 255, 0.4);
 }
 
-/* ============ Main Content ============ */
+/* ============ Main Content: Side-by-side ============ */
 .main-content {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   overflow: hidden;
 }
 
-/* ============ Action Bar ============ */
-.content-actions {
+/* ============ Panels ============ */
+.panel {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-lg);
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-subtle);
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.content-actions.hidden {
+.pdf-panel {
+  width: 50%;
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+  transition: width 0.25s ease;
+}
+
+.json-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 42px;
+}
+
+.panel-header h2 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.panel-actions.hidden {
   display: none;
 }
 
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.pdf-panel .panel-body {
+  background: #fff;
+}
+
+.pdf-panel iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.panel-scroll {
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+}
+
+/* When PDF is collapsed, JSON panel takes full width */
+.main-content.pdf-collapsed .json-panel {
+  flex: 1;
+}
+
+/* ============ Expand Handle (collapsed state) ============ */
+.panel-expand-handle {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.panel-expand-handle button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 32px;
+  padding: var(--spacing-md) 4px;
+  background: var(--bg-secondary);
+  border: none;
+  border-right: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: var(--transition-fast);
+}
+
+.panel-expand-handle button:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-secondary);
+}
+
+.expand-label {
+  writing-mode: vertical-lr;
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ============ Buttons ============ */
 .btn-action {
   padding: 6px 14px;
   background: var(--bg-tertiary);
@@ -252,19 +346,6 @@ body {
 .btn-action-sm {
   padding: 4px 10px;
   font-size: 0.75rem;
-}
-
-/* ============ Content Scroll ============ */
-.content-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--spacing-lg);
-  background: var(--bg-primary);
-}
-
-#contentBody {
-  max-width: 1200px;
-  margin: 0 auto;
 }
 
 /* ============ Loading & Error States ============ */

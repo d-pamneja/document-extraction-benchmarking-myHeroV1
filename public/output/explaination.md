@@ -1,8 +1,4 @@
 # MyHero Document Extraction v3 — Technical Brief
-
-*Prepared for Alex (CTO) & Kevin (CEO)*
-*February 2026*
-
 ---
 
 ## What It Does

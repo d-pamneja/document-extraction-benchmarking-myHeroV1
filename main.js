@@ -72,6 +72,7 @@ class DocumentBenchmark {
     this.renderedSegments = new Set();
     this.segmentBlockOffset = {};
     this.blockObservers = {};   // IntersectionObservers per segment
+    this.pdfCollapsed = false;
     this.init();
   }
 
@@ -90,6 +91,20 @@ class DocumentBenchmark {
         const doc = btn.dataset.doc;
         this.switchTab(doc);
       });
+    });
+
+    // PDF panel collapse/expand
+    document.getElementById('collapsePdf').addEventListener('click', () => {
+      this.setPdfCollapsed(true);
+    });
+    document.getElementById('expandPdf').addEventListener('click', () => {
+      this.setPdfCollapsed(false);
+    });
+
+    // Open PDF in new tab
+    document.getElementById('openInTab').addEventListener('click', () => {
+      const iframe = document.getElementById('pdfViewer');
+      if (iframe.src) window.open(iframe.src, '_blank');
     });
 
     // Download JSON
@@ -219,6 +234,26 @@ class DocumentBenchmark {
   }
 
   // ============================================
+  // PDF Panel Collapse/Expand
+  // ============================================
+  setPdfCollapsed(collapsed) {
+    this.pdfCollapsed = collapsed;
+    const pdfPanel = document.getElementById('pdfPanel');
+    const expandHandle = document.getElementById('expandHandle');
+    const mainContent = document.querySelector('.main-content');
+
+    if (collapsed) {
+      pdfPanel.classList.add('hidden');
+      expandHandle.classList.remove('hidden');
+      mainContent.classList.add('pdf-collapsed');
+    } else {
+      pdfPanel.classList.remove('hidden');
+      expandHandle.classList.add('hidden');
+      mainContent.classList.remove('pdf-collapsed');
+    }
+  }
+
+  // ============================================
   // Tab Switching
   // ============================================
   async switchTab(doc) {
@@ -234,14 +269,34 @@ class DocumentBenchmark {
     this.renderedSegments.clear();
     this.segmentBlockOffset = {};
 
+    const pdfPanel = document.getElementById('pdfPanel');
+    const expandHandle = document.getElementById('expandHandle');
+    const mainContent = document.querySelector('.main-content');
+    const panelActions = document.querySelector('#jsonPanel .panel-actions');
+
     if (doc === 'explanation') {
-      // Hide action bar, hide stats
-      document.getElementById('contentActions').classList.add('hidden');
+      // Hide PDF panel entirely for Tech Brief, hide stats, hide JSON actions
+      pdfPanel.classList.add('hidden');
+      expandHandle.classList.add('hidden');
+      mainContent.classList.add('pdf-collapsed');
       document.getElementById('processingStats').style.display = 'none';
+      panelActions.classList.add('hidden');
+      document.getElementById('jsonPanelTitle').textContent = 'Tech Brief';
       await this.loadExplanation();
     } else {
-      document.getElementById('contentActions').classList.remove('hidden');
+      // Restore PDF panel per user's collapse preference
+      if (this.pdfCollapsed) {
+        pdfPanel.classList.add('hidden');
+        expandHandle.classList.remove('hidden');
+        mainContent.classList.add('pdf-collapsed');
+      } else {
+        pdfPanel.classList.remove('hidden');
+        expandHandle.classList.add('hidden');
+        mainContent.classList.remove('pdf-collapsed');
+      }
       document.getElementById('processingStats').style.display = '';
+      panelActions.classList.remove('hidden');
+      document.getElementById('jsonPanelTitle').textContent = 'Extracted Structure';
       await this.loadDocument(doc);
     }
   }
@@ -302,13 +357,10 @@ class DocumentBenchmark {
     document.getElementById('totalSegments').textContent = meta.total_segments || '-';
     document.getElementById('totalBlocks').textContent = meta.total_blocks?.toLocaleString() || '-';
 
-    // Update PDF link
-    const pdfLink = document.getElementById('pdfLink');
+    // Update PDF iframe
+    const pdfViewer = document.getElementById('pdfViewer');
     if (meta.document_url) {
-      pdfLink.href = meta.document_url;
-      pdfLink.style.display = '';
-    } else {
-      pdfLink.style.display = 'none';
+      pdfViewer.src = meta.document_url;
     }
 
     const container = document.getElementById('contentBody');
@@ -873,7 +925,7 @@ class DocumentBenchmark {
           }
         });
       }, {
-        root: document.getElementById('contentScroll'),
+        root: document.getElementById('contentScroll') || null,
         rootMargin: '300px 0px',
       });
       observer.observe(sentinel);

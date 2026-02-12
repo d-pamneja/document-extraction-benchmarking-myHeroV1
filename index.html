@@ -39,20 +39,42 @@
         </div>
       </header>
 
-      <!-- Main Content -->
+      <!-- Main Content: Side-by-side -->
       <main class="main-content">
-        <!-- Action bar -->
-        <div class="content-actions" id="contentActions">
-          <a id="pdfLink" class="btn-action" target="_blank" rel="noopener">View Source PDF ↗</a>
-          <button id="downloadJson" class="btn-action">Download JSON</button>
-          <button id="viewRawJson" class="btn-action">View Raw JSON</button>
+        <!-- Left Panel: PDF Viewer (collapsible) -->
+        <div class="panel pdf-panel" id="pdfPanel">
+          <div class="panel-header">
+            <h2>Source Document</h2>
+            <div class="panel-actions">
+              <button id="openInTab" class="btn-action btn-action-sm" title="Open PDF in new tab">Open in Tab ↗</button>
+              <button id="collapsePdf" class="btn-action btn-action-sm" title="Collapse PDF panel">◀ Hide</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <iframe id="pdfViewer" src="" title="PDF Document"></iframe>
+          </div>
         </div>
-        <!-- Scrollable content body -->
-        <div class="content-scroll" id="contentScroll">
-          <div id="contentBody">
-            <div class="loading-state">
-              <div class="spinner"></div>
-              <p>Loading document analysis...</p>
+
+        <!-- Collapse handle (visible when PDF is collapsed) -->
+        <div class="panel-expand-handle hidden" id="expandHandle">
+          <button id="expandPdf" title="Show PDF panel">▶<span class="expand-label">PDF</span></button>
+        </div>
+
+        <!-- Right Panel: JSON Visualization -->
+        <div class="panel json-panel" id="jsonPanel">
+          <div class="panel-header">
+            <h2 id="jsonPanelTitle">Extracted Structure</h2>
+            <div class="panel-actions">
+              <button id="downloadJson" class="btn-action btn-action-sm">Download JSON</button>
+              <button id="viewRawJson" class="btn-action btn-action-sm">View Raw JSON</button>
+            </div>
+          </div>
+          <div class="panel-body panel-scroll" id="contentScroll">
+            <div id="contentBody">
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading document analysis...</p>
+              </div>
             </div>
           </div>
         </div>
