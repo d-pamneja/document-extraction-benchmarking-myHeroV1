@@ -1,1020 +1,1105 @@
 import './style.css';
+import { marked } from 'marked';
 
 // ============================================
-// MyHero Document AI Benchmark - Main App
+// MyHero Document AI Benchmark v3 — Main App
 // ============================================
 
-// Document and technique configurations
+// Document configurations — PDF URLs come from metadata.document_url in each JSON
 const DOCUMENTS = {
   contract: {
     name: 'Santa Cruz Contract',
-    pdfUrl: 'https://jjzhbhdtgeimxymsftkm.supabase.co/storage/v1/object/public/test/SampleContract-Shuttle-3.pdf',
-    results: {
-      mistral: '/contract-mistral.json'
-    }
+    shortName: 'Contract',
+    jsonPath: '/output/SampleContract-Shuttle-3-v3-final.json',
   },
   fidic: {
     name: 'FIDIC Yellow Book',
-    pdfUrl: 'https://example30164.wordpress.com/wp-content/uploads/2016/04/fidic-db-yellow-book.pdf',
-    results: {
-      mistral: '/fidic-mistral.json'
-    }
+    shortName: 'FIDIC',
+    jsonPath: '/output/fidic-db-yellow-book-v3-final.json',
+  },
+  lma: {
+    name: 'LMA Facilities Agreement',
+    shortName: 'LMA',
+    jsonPath: '/output/lma-v3-final.json',
   }
 };
+const EXPLANATION_PATH = '/output/explaination.md';
 
-// ============================================
-// NEW ADDITIONS - ADE Technique Support
-// ============================================
-// This section adds ADE (Anthropic Document Extraction) technique options
-// Original code above is preserved - these are additions for new branch
-// ============================================
-
-// Extend DOCUMENTS with ADE results
-DOCUMENTS.contract.results = {
-  ...DOCUMENTS.contract.results, // Preserve original mistral
-  'ade-modify': '/contract-ade-modify.json'
+// Block type colors for badges
+const BLOCK_TYPE_COLORS = {
+  heading: '#8b5cf6',
+  paragraph: '#6366f1',
+  clause: '#3b82f6',
+  ordered_list_item: '#06b6d4',
+  bullet_list_item: '#10b981',
+  table: '#f59e0b',
+  signature_line: '#ec4899',
+  definition: '#22c55e',
+  recital: '#84cc16',
+  page_header: '#94a3b8',
+  page_footer: '#94a3b8',
+  whitespace: '#64748b',
+  image: '#f97316',
+  toc_entry: '#a78bfa',
 };
 
-DOCUMENTS.fidic.results = {
-  ...DOCUMENTS.fidic.results, // Preserve original mistral
-  'ade-modify': '/fidic-ade-modify.json'
+// Segment type icons
+const SEGMENT_ICONS = {
+  main_body: '📄',
+  schedule: '📋',
+  exhibit: '📎',
+  annex: '📑',
+  appendix: '📑',
+  signature: '✍️',
+  toc: '📑',
+  cover: '📘',
+  definitions: '📖',
+  general_conditions: '📜',
+  particular_conditions: '📝',
+  preamble: '📜',
+  front_matter: '📘',
+  index: '📇',
 };
 
+// ============================================
+// DocumentBenchmark Class
+// ============================================
 class DocumentBenchmark {
   constructor() {
-    this.data = null;
-    this.currentDocument = 'contract';
-    this.currentTechnique = 'mistral';
-    // NEW: Toggle for ADE format - show only hierarchy (like Mistral) or full content
-    this.adeShowHierarchyOnly = true; // Default to hierarchy only
+    this.currentDoc = 'contract';
+    this.cache = {};            // JSON cache per document key
+    this.explanationCache = null;
+    this.renderedSegments = new Set();
+    this.segmentBlockOffset = {};
+    this.blockObservers = {};   // IntersectionObservers per segment
     this.init();
   }
 
   async init() {
-    // NEW: Initialize technique options based on default document
-    this.updateTechniqueOptions();
-    
-    await this.loadData();
     this.setupEventListeners();
-    this.render();
+    await this.switchTab('contract');
   }
 
-  async loadData() {
-    try {
-      if (this._pageObserver) {
-        this._pageObserver.disconnect();
-        this._pageObserver = null;
-      }
-      this.showLoading();
-      const config = DOCUMENTS[this.currentDocument];
-      const jsonPath = config.results[this.currentTechnique];
-      
-      if (!jsonPath) {
-        throw new Error(`No results available for ${this.currentTechnique} on ${config.name}`);
-      }
-      
-      const response = await fetch(jsonPath);
-      this.data = await response.json();
-      
-      // NEW: Store format type for rendering
-      this.dataFormat = this.isADEFormat(this.data) ? 'ade' : 'mistral';
-      
-      console.log(`📄 Loaded ${config.name} with ${this.currentTechnique}:`, this.data);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-      this.showError(`Failed to load document analysis: ${error.message}`);
-    }
-  }
-
+  // ============================================
+  // Event Listeners
+  // ============================================
   setupEventListeners() {
-    // Document selector
-    document.getElementById('documentSelect').addEventListener('change', async (e) => {
-      this.currentDocument = e.target.value;
-      const config = DOCUMENTS[this.currentDocument];
-      
-      // Update PDF viewer
-      document.getElementById('pdfViewer').src = config.pdfUrl;
-      
-      // NEW: Update technique options based on selected document
-      this.updateTechniqueOptions();
-      
-      // Reload data
-      await this.loadData();
-      this.render();
+    // Tab switching
+    document.querySelectorAll('.doc-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const doc = btn.dataset.doc;
+        this.switchTab(doc);
+      });
     });
 
-    // Technique selector
-    document.getElementById('techniqueSelect').addEventListener('change', async (e) => {
-      this.currentTechnique = e.target.value;
-      await this.loadData();
-      this.render();
+    // Download JSON
+    document.getElementById('downloadJson').addEventListener('click', () => {
+      if (this.currentDoc === 'explanation') return;
+      const config = DOCUMENTS[this.currentDoc];
+      const a = document.createElement('a');
+      a.href = config.jsonPath;
+      a.download = config.jsonPath.split('/').pop();
+      a.click();
     });
 
-    // Open PDF in new tab
-    document.getElementById('openInTab').addEventListener('click', () => {
-      const config = DOCUMENTS[this.currentDocument];
-      window.open(config.pdfUrl, '_blank');
+    // View Raw JSON
+    document.getElementById('viewRawJson').addEventListener('click', () => {
+      if (this.currentDoc === 'explanation') return;
+      const data = this.cache[this.currentDoc];
+      if (!data) return;
+      this.openRawJsonModal(data);
     });
 
-    // Raw JSON modal
-    document.getElementById('toggleRawJson').addEventListener('click', () => {
-      document.getElementById('rawJsonModal').classList.remove('hidden');
-      document.getElementById('rawJsonContent').textContent = JSON.stringify(this.data, null, 2);
+    // Copy JSON
+    document.getElementById('copyJson').addEventListener('click', async () => {
+      const content = document.getElementById('rawJsonContent').textContent;
+      try {
+        await navigator.clipboard.writeText(content);
+        const btn = document.getElementById('copyJson');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
+      } catch (e) {
+        console.error('Copy failed:', e);
+      }
     });
 
+    // Close modal
     document.getElementById('closeModal').addEventListener('click', () => {
       document.getElementById('rawJsonModal').classList.add('hidden');
+      document.getElementById('rawJsonContent').textContent = '';
     });
-
     document.getElementById('rawJsonModal').addEventListener('click', (e) => {
       if (e.target.id === 'rawJsonModal') {
         document.getElementById('rawJsonModal').classList.add('hidden');
+        document.getElementById('rawJsonContent').textContent = '';
       }
     });
 
-    // Section collapse toggle
-    document.getElementById('jsonContent').addEventListener('click', (e) => {
-      const header = e.target.closest('.section-header');
-      if (header) {
-        header.closest('.section').classList.toggle('collapsed');
+    // Delegated click handlers on content body
+    document.getElementById('contentBody').addEventListener('click', (e) => {
+      // Section collapse
+      const sectionHeader = e.target.closest('.section-header');
+      if (sectionHeader) {
+        const section = sectionHeader.closest('.section');
+        if (section) section.classList.toggle('collapsed');
+        return;
       }
-      
-      // NEW: ADE toggle view button
-      if (e.target.id === 'adeToggleView') {
-        this.adeShowHierarchyOnly = !this.adeShowHierarchyOnly;
-        // Re-render ADE visualization
-        if (this.dataFormat === 'ade') {
-          this.render();
+
+      // Segment accordion
+      const segHeader = e.target.closest('.segment-header');
+      if (segHeader) {
+        const accordion = segHeader.closest('.segment-accordion');
+        if (accordion) {
+          const wasCollapsed = accordion.classList.contains('collapsed');
+          accordion.classList.toggle('collapsed');
+          if (wasCollapsed) {
+            const segId = accordion.dataset.segmentId;
+            this.onSegmentExpand(segId, accordion);
+          }
         }
+        return;
+      }
+
+      // Raw markdown toggle
+      const rawToggle = e.target.closest('.raw-md-toggle');
+      if (rawToggle) {
+        const pre = rawToggle.closest('.block-card')?.querySelector('.raw-md-content')
+                 || rawToggle.closest('.table-card')?.querySelector('.raw-md-content');
+        if (pre) {
+          pre.classList.toggle('hidden');
+          rawToggle.textContent = pre.classList.contains('hidden') ? 'Show raw markdown' : 'Hide raw markdown';
+        }
+        return;
+      }
+
+      // Cross-ref context expand
+      const ctxToggle = e.target.closest('.crossref-ctx-toggle');
+      if (ctxToggle) {
+        const full = ctxToggle.previousElementSibling;
+        if (full) {
+          full.classList.toggle('hidden');
+          ctxToggle.textContent = full.classList.contains('hidden') ? 'Show context' : 'Hide context';
+        }
+        return;
+      }
+
+      // Segment raw JSON button
+      const segJsonBtn = e.target.closest('.segment-json-btn');
+      if (segJsonBtn) {
+        const segIdx = parseInt(segJsonBtn.dataset.segmentIndex, 10);
+        const data = this.cache[this.currentDoc];
+        if (data && data.segments && data.segments[segIdx]) {
+          this.openRawJsonModal(data.segments[segIdx]);
+        }
+        return;
+      }
+
+      // Skeleton item click → scroll to segment
+      const skelItem = e.target.closest('.skeleton-item');
+      if (skelItem) {
+        const segId = skelItem.dataset.segmentId;
+        if (segId) {
+          const accordion = document.querySelector(`.segment-accordion[data-segment-id="${segId}"]`);
+          if (accordion) {
+            accordion.classList.remove('collapsed');
+            this.onSegmentExpand(segId, accordion);
+            accordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+        return;
+      }
+
+      // Definitions load more
+      const loadMoreDefs = e.target.closest('.load-more-defs');
+      if (loadMoreDefs) {
+        this.renderAllDefinitions();
+        return;
       }
     });
   }
 
-  showLoading() {
-    document.getElementById('jsonContent').innerHTML = `
-      <div class="loading-state">
-        <div class="spinner"></div>
-        <p>Loading document analysis...</p>
-      </div>
-    `;
-  }
+  // ============================================
+  // Tab Switching
+  // ============================================
+  async switchTab(doc) {
+    this.currentDoc = doc;
 
-  render() {
-    if (!this.data) return;
+    // Update tab active state
+    document.querySelectorAll('.doc-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.doc === doc);
+    });
 
-    // NEW: Handle different formats (Mistral vs ADE)
-    if (this.dataFormat === 'ade') {
-      // Update stats for ADE format
-      document.getElementById('totalPages').textContent = this.data.total_pages || '-';
-      document.getElementById('totalSections').textContent = 
-        this.data.total_sections || (this.data.sections?.length || '-');
-      document.getElementById('maxDepth').textContent = 
-        this.getADEMaxDepth(this.data.sections) || '-';
+    // Clean up observers
+    this.cleanupObservers();
+    this.renderedSegments.clear();
+    this.segmentBlockOffset = {};
 
-      // Render ADE visualization
-      const container = document.getElementById('jsonContent');
-      container.innerHTML = this.renderADEVisualization();
+    if (doc === 'explanation') {
+      // Hide action bar, hide stats
+      document.getElementById('contentActions').classList.add('hidden');
+      document.getElementById('processingStats').style.display = 'none';
+      await this.loadExplanation();
     } else {
-      // Original Mistral format
-      const doc = this.data.documentAnnotation;
-      
-      // Update stats
-      document.getElementById('totalPages').textContent = this.data.metadata?.totalPages || '-';
-      document.getElementById('totalSections').textContent = 
-        doc?.structural_hierarchy?.length || '-';
-      document.getElementById('maxDepth').textContent = 
-        doc?.numbering_convention?.max_depth ? `L${doc.numbering_convention.max_depth}` : '-';
-
-      // Render JSON visualization
-      const container = document.getElementById('jsonContent');
-      container.innerHTML = this.renderVisualization();
-      this.setupPageObserver();
+      document.getElementById('contentActions').classList.remove('hidden');
+      document.getElementById('processingStats').style.display = '';
+      await this.loadDocument(doc);
     }
   }
 
-  renderVisualization() {
-    const doc = this.data.documentAnnotation;
-    if (!doc) return '<p class="text-muted">No document annotation available</p>';
+  // ============================================
+  // Data Loading
+  // ============================================
+  async loadDocument(docKey) {
+    const container = document.getElementById('contentBody');
 
-    return `
-      ${this.renderMetadataSection(doc)}
-      ${this.renderCostSection()}
-      ${this.renderBlockSegmentationSection()}
-      ${this.renderPartiesSection(doc.parties)}
-      ${this.renderNumberingSection(doc.numbering_convention)}
-      ${this.renderHierarchySection(doc.structural_hierarchy)}
-      ${this.renderCrossReferencesSection(doc.cross_references)}
-      ${this.renderAttachmentsSection(doc.attachments)}
-      ${this.renderDatesSection(doc.key_dates)}
-      ${this.renderDefinitionsSection(doc.definitions)}
-      ${this.renderSummarySection(doc.summary)}
-      ${this.renderPagesSection(this.data.pages)}
-    `;
-  }
-
-  // ============================================
-  // NEW METHOD - ADE Format Visualization
-  // ============================================
-  // Renders ADE format exactly as it appears in JSON
-  // No transformation - shows raw structure
-  // ============================================
-  renderADEVisualization() {
-    if (!this.data || !this.data.sections) {
-      return '<p class="text-muted">No sections available</p>';
+    if (this.cache[docKey]) {
+      this.renderDocument(this.cache[docKey], docKey);
+      return;
     }
 
-    return `
-      ${this.renderADEMetadataSection()}
-      ${this.renderADECostSection()}
-      ${this.renderADEHierarchySection(this.data.sections)}
-    `;
+    // Show loading
+    container.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading ${DOCUMENTS[docKey].name}...</p></div>`;
+
+    try {
+      const response = await fetch(DOCUMENTS[docKey].jsonPath);
+      const data = await response.json();
+      this.cache[docKey] = data;
+      this.renderDocument(data, docKey);
+    } catch (err) {
+      container.innerHTML = `<div class="error-state">Failed to load document: ${err.message}</div>`;
+    }
   }
 
-  getADEMaxDepth(sections) {
-    if (!sections || sections.length === 0) return '-';
-    
-    let maxDepth = 0;
-    const findMaxDepth = (sections, currentDepth = 0) => {
-      sections.forEach(section => {
-        const depth = section.level !== undefined ? section.level + 1 : currentDepth + 1;
-        maxDepth = Math.max(maxDepth, depth);
-        if (section.subsections && section.subsections.length > 0) {
-          findMaxDepth(section.subsections, depth);
-        }
-      });
-    };
-    
-    findMaxDepth(sections);
-    return maxDepth > 0 ? `L${maxDepth}` : '-';
-  }
+  async loadExplanation() {
+    const container = document.getElementById('contentBody');
 
-  renderADEMetadataSection() {
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📋 Document Information</h3>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <div class="data-row">
-            <span class="data-label">Document</span>
-            <span class="data-value">${this.data.document || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Total Sections</span>
-            <span class="data-value">${this.data.total_sections || this.data.sections?.length || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Total Subsections</span>
-            <span class="data-value">${this.data.total_subsections || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Technique</span>
-            <span class="data-value" style="color: var(--accent-secondary)">${this.currentTechnique}</span>
-          </div>
-          <div class="data-row" style="margin-top: var(--spacing-md); padding-top: var(--spacing-md); border-top: 1px solid var(--border-subtle);">
-            <span class="data-label">View Mode</span>
-            <button id="adeToggleView" class="btn-secondary" style="margin-left: auto;">
-              ${this.adeShowHierarchyOnly ? '📋 Show Full Content' : '📑 Show Hierarchy Only'}
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderADECostSection() {
-    if (this.currentTechnique !== 'ade-modify') {
-      return '';
+    if (this.explanationCache) {
+      container.innerHTML = `<div class="markdown-rendered">${this.explanationCache}</div>`;
+      return;
     }
 
-    const pages = 10;
-    const perPageCost = 0.03;
-    const totalCost = pages * perPageCost;
+    container.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading Tech Brief...</p></div>`;
 
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>💰 Cost & Processing</h3>
-          <span class="section-badge">$${totalCost.toFixed(2)}</span>
-          <span class="section-toggle">▼</span>
+    try {
+      const response = await fetch(EXPLANATION_PATH);
+      const text = await response.text();
+      this.explanationCache = marked(text);
+      container.innerHTML = `<div class="markdown-rendered">${this.explanationCache}</div>`;
+    } catch (err) {
+      container.innerHTML = `<div class="error-state">Failed to load explanation: ${err.message}</div>`;
+    }
+  }
+
+  // ============================================
+  // Document Rendering — Main Entry
+  // ============================================
+  renderDocument(data, docKey) {
+    const meta = data.metadata || {};
+    const docInfo = data.document_info || {};
+
+    // Update stats badge
+    document.getElementById('totalPages').textContent = meta.total_pages || '-';
+    document.getElementById('totalSegments').textContent = meta.total_segments || '-';
+    document.getElementById('totalBlocks').textContent = meta.total_blocks?.toLocaleString() || '-';
+
+    // Update PDF link
+    const pdfLink = document.getElementById('pdfLink');
+    if (meta.document_url) {
+      pdfLink.href = meta.document_url;
+      pdfLink.style.display = '';
+    } else {
+      pdfLink.style.display = 'none';
+    }
+
+    const container = document.getElementById('contentBody');
+    container.innerHTML = [
+      this.renderMetadataDashboard(meta),
+      this.renderDocumentInfo(docInfo),
+      this.renderDefinitions(data),
+      this.renderSkeleton(docInfo),
+      this.renderSegments(data.segments || []),
+      this.renderImagesSummary(data.segments || []),
+    ].join('');
+  }
+
+  // ============================================
+  // Section 1: Metadata Dashboard
+  // ============================================
+  renderMetadataDashboard(meta) {
+    const cost = meta.cost || {};
+    const time = meta.processing_time || {};
+    const quality = meta.quality || {};
+    const prescan = meta.prescan_summary || {};
+
+    // Consistency score color
+    const score = quality.consistency_score ?? 0;
+    const scoreColor = score >= 0.9 ? 'var(--success)' : score >= 0.7 ? 'var(--warning)' : 'var(--error)';
+    const scorePct = (score * 100).toFixed(1);
+
+    // Stat cards
+    const statCards = `
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-card-value">${meta.total_pages || '-'}</div>
+          <div class="stat-card-label">Total Pages</div>
         </div>
-        <div class="section-content">
-          <div class="cost-summary-grid">
-            <div class="cost-card cost-card-total">
-              <div class="cost-card-value">$${totalCost.toFixed(2)}</div>
-              <div class="cost-card-label">Total Cost</div>
-            </div>
-            <div class="cost-card">
-              <div class="cost-card-value">$${perPageCost.toFixed(2)}</div>
-              <div class="cost-card-label">Per Page</div>
-            </div>
-            <div class="cost-card">
-              <div class="cost-card-value">N/A</div>
-              <div class="cost-card-label">Total Time</div>
-            </div>
-            <div class="cost-card">
-              <div class="cost-card-value">${pages}</div>
-              <div class="cost-card-label">Pages</div>
-            </div>
-          </div>
-          <div class="cost-estimate-note">
-            ADE2-parse uses 3 credits per page at $0.01 per credit. $0.03 per page, $0.30 total for 10 pages.
-          </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${meta.total_segments || '-'}</div>
+          <div class="stat-card-label">Total Segments</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${meta.total_blocks?.toLocaleString() || '-'}</div>
+          <div class="stat-card-label">Total Blocks</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value" style="color: ${scoreColor}">${scorePct}%</div>
+          <div class="stat-card-label">Consistency</div>
         </div>
       </div>
     `;
-  }
 
-  renderADEHierarchySection(sections) {
-    if (!sections || sections.length === 0) return '';
-
-    const renderSection = (section) => {
-      const indent = section.level !== undefined ? section.level * 16 : 0;
-      
-      // NEW: In hierarchy mode, show full title but let CSS handle truncation for single line
-      const displayTitle = section.title || '';
-      
-      // NEW: Ensure single line display with proper overflow handling for hierarchy mode
-      const itemStyle = this.adeShowHierarchyOnly 
-        ? `padding-left: ${indent}px; align-items: center !important;`
-        : `padding-left: ${indent}px;`;
-      
-      const titleStyle = this.adeShowHierarchyOnly 
-        ? 'min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;'
-        : '';
-      
-      let html = `
-        <div class="hierarchy-item" style="${itemStyle}">
-          <span class="hierarchy-number" style="flex-shrink: 0;">${section.number || ''}</span>
-          <span class="hierarchy-title" style="${titleStyle}">${this.escapeHtml(displayTitle)}</span>
-          <span class="level-badge" style="flex-shrink: 0; margin-left: auto;">L${section.level !== undefined ? section.level + 1 : 1}</span>
+    // Cost grid
+    const costGrid = `
+      <div class="subsection-title">Cost Breakdown</div>
+      <div class="stat-grid">
+        <div class="stat-card stat-card-highlight">
+          <div class="stat-card-value" style="color: var(--success)">$${(cost.total ?? 0).toFixed(4)}</div>
+          <div class="stat-card-label">Total Cost</div>
         </div>
-      `;
-
-      // NEW: Only show content if toggle is set to show full content
-      if (!this.adeShowHierarchyOnly && section.content) {
-        html += `
-          <div class="section-content-text" style="padding-left: ${indent + 20}px; margin-top: 8px; margin-bottom: 16px; color: var(--text-secondary); font-size: 0.9rem;">
-            ${this.escapeHtml(this.truncate(section.content, 300))}
-          </div>
-        `;
-      }
-
-      if (section.subsections && section.subsections.length > 0) {
-        section.subsections.forEach(subsection => {
-          html += renderSection(subsection);
-        });
-      }
-
-      return html;
-    };
-
-    const hierarchyHtml = sections.map(section => renderSection(section)).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📑 Document Structure (ADE Format)</h3>
-          <span class="section-badge">${this.data.total_sections || sections.length} sections</span>
-          <span class="section-toggle">▼</span>
+        <div class="stat-card">
+          <div class="stat-card-value">$${(cost.per_page ?? 0).toFixed(4)}</div>
+          <div class="stat-card-label">Per Page</div>
         </div>
-        <div class="section-content">
-          <div class="hierarchy-tree">
-            ${hierarchyHtml}
-          </div>
+        <div class="stat-card">
+          <div class="stat-card-value">$${(cost.pass0 ?? 0).toFixed(4)}</div>
+          <div class="stat-card-label">Pass 0 (OCR)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">$${(cost.pass1 ?? 0).toFixed(4)}</div>
+          <div class="stat-card-label">Pass 1 (Structure)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">$${(cost.pass2 ?? 0).toFixed(4)}</div>
+          <div class="stat-card-label">Pass 2 (Extract)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${cost.llm_calls?.pass1 ?? '-'}</div>
+          <div class="stat-card-label">LLM Calls (P1)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${cost.llm_calls?.pass2 ?? '-'}</div>
+          <div class="stat-card-label">LLM Calls (P2)</div>
         </div>
       </div>
     `;
-  }
 
-  renderMetadataSection(doc) {
-    const approach = this.getApproach();
-    const badgeClass = approach.pass === '2-Pass' ? 'approach-2pass' : 'approach-1pass';
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📋 Document Metadata</h3>
-          <span class="approach-badge ${badgeClass}">${approach.pass}</span>
-          <span class="section-toggle">▼</span>
+    // Processing time grid
+    const timeGrid = `
+      <div class="subsection-title">Processing Time</div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-card-value">${time.pass0_ocr || '-'}</div>
+          <div class="stat-card-label">Pass 0 (OCR)</div>
         </div>
-        <div class="section-content">
-          <div class="approach-banner ${badgeClass}">
-            <strong>${approach.pass} Extraction</strong>
-            <p>${approach.label}</p>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Title</span>
-            <span class="data-value">${doc.title || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Document Type</span>
-            <span class="data-value" style="text-transform: capitalize">${doc.document_type || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Language</span>
-            <span class="data-value">${doc.language || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Schema Version</span>
-            <span class="data-value" style="color: var(--accent-secondary)">${approach.schema}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Pages</span>
-            <span class="data-value">${this.data.metadata?.totalPages || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Total Characters</span>
-            <span class="data-value">${this.data.pages?.reduce((acc, p) => acc + (p.characterCount || 0), 0).toLocaleString() || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Processed At</span>
-            <span class="data-value">${new Date(this.data.metadata?.processedAt).toLocaleString() || 'N/A'}</span>
-          </div>
-          <div class="data-row">
-            <span class="data-label">Model</span>
-            <span class="data-value" style="color: var(--accent-secondary)">${this.data.metadata?.model || 'N/A'}</span>
-          </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${time.pass1_convention || '-'}</div>
+          <div class="stat-card-label">Pass 1 (Convention)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${time.pass2_blocks || '-'}</div>
+          <div class="stat-card-label">Pass 2 (Blocks)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${time.pass3_stitch || '-'}</div>
+          <div class="stat-card-label">Pass 3 (Stitch)</div>
+        </div>
+        <div class="stat-card stat-card-highlight">
+          <div class="stat-card-value" style="color: var(--accent-secondary)">${time.total || '-'}</div>
+          <div class="stat-card-label">Total Time</div>
         </div>
       </div>
     `;
-  }
 
-  renderCostSection() {
-    const cost = this.data.metadata?.cost;
-    const totalPages = this.data.metadata?.totalPages || 0;
-    const time = this.data.metadata?.processingTime;
-    const approach = this.getApproach();
+    // Quality section
+    const qualitySection = `
+      <div class="subsection-title">Quality</div>
+      <div class="quality-bar-container">
+        <div class="quality-bar" style="width: ${scorePct}%; background: ${scoreColor}"></div>
+      </div>
+      <div class="quality-meta">
+        <span>Score: ${scorePct}%</span>
+        <span>Issues: ${quality.consistency_issues ?? 0}</span>
+        <span>Warnings: ${quality.consistency_warnings ?? 0}</span>
+        <span>Ambiguous Refs: ${quality.ambiguous_refs ?? 0}</span>
+      </div>
+    `;
 
-    if (approach.pass === '2-Pass' && cost) {
-      return `
-        <div class="section">
+    // Prescan summary (collapsed by default)
+    let prescanHtml = '';
+    if (prescan && prescan.totalPages) {
+      const dominantRows = Object.entries(prescan.dominantPatterns || {}).map(([level, info]) =>
+        `<tr><td>${level}</td><td><code>${this.escapeHtml(info.pattern)}</code></td><td>${info.count}</td></tr>`
+      ).join('');
+
+      const segmentList = (prescan.segments || []).map(s => `<span class="tag">${this.escapeHtml(s)}</span>`).join(' ');
+      const breakPages = (prescan.breakPages || []).map(p => `<span class="tag">${p}</span>`).join(' ');
+
+      prescanHtml = `
+        <div class="section collapsed" style="margin-top: var(--spacing-md);">
           <div class="section-header">
-            <h3>💰 Cost & Processing</h3>
-            <span class="section-badge">$${cost.total.toFixed(4)}</span>
+            <h3>Prescan Summary</h3>
+            <span class="section-badge">${prescan.totalPages} pages scanned</span>
             <span class="section-toggle">▼</span>
           </div>
           <div class="section-content">
-            <div class="cost-summary-grid">
-              <div class="cost-card cost-card-total">
-                <div class="cost-card-value">$${cost.total.toFixed(4)}</div>
-                <div class="cost-card-label">Total Cost</div>
-              </div>
-              <div class="cost-card">
-                <div class="cost-card-value">$${cost.perPage.toFixed(4)}</div>
-                <div class="cost-card-label">Per Page</div>
-              </div>
-              <div class="cost-card">
-                <div class="cost-card-value">${time?.total || 'N/A'}</div>
-                <div class="cost-card-label">Total Time</div>
-              </div>
-              <div class="cost-card">
-                <div class="cost-card-value">${totalPages}</div>
-                <div class="cost-card-label">Pages</div>
-              </div>
-            </div>
-            <div class="cost-pass-section">
-              <div class="cost-pass-card">
-                <div class="cost-pass-header">Pass 1: OCR</div>
-                <div class="cost-pass-details">
-                  <span>$${cost.pass1.cost.toFixed(4)}</span>
-                  <span class="cost-pass-meta">${cost.pass1.pages} pages @ $${cost.rates.ocrAnnotatedPerPage}/page</span>
-                  <span class="cost-pass-meta">Time: ${time?.pass1 || 'N/A'}</span>
-                </div>
-              </div>
-              <div class="cost-pass-card">
-                <div class="cost-pass-header">Pass 2: LLM Structuring</div>
-                <div class="cost-pass-details">
-                  <span>$${cost.pass2.cost.toFixed(6)}</span>
-                  <span class="cost-pass-meta">${(cost.pass2.promptTokens / 1000).toFixed(1)}K input + ${(cost.pass2.completionTokens / 1000).toFixed(1)}K output tokens</span>
-                  <span class="cost-pass-meta">Time: ${time?.pass2 || 'N/A'}</span>
-                  <span class="cost-pass-meta">Rates: $${cost.rates.mistralLargeInputPerM}/M input, $${cost.rates.mistralLargeOutputPerM}/M output</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // 1-Pass estimated cost
-    const estimatedPerPage = 0.003;
-    const estimatedTotal = totalPages * estimatedPerPage;
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>💰 Cost & Processing</h3>
-          <span class="section-badge">~$${estimatedTotal.toFixed(2)}</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <div class="cost-summary-grid">
-            <div class="cost-card cost-card-total">
-              <div class="cost-card-value">~$${estimatedTotal.toFixed(2)}</div>
-              <div class="cost-card-label">Estimated Total</div>
-            </div>
-            <div class="cost-card">
-              <div class="cost-card-value">$${estimatedPerPage.toFixed(3)}</div>
-              <div class="cost-card-label">Per Page</div>
-            </div>
-            <div class="cost-card">
-              <div class="cost-card-value">N/A</div>
-              <div class="cost-card-label">Total Time</div>
-            </div>
-            <div class="cost-card">
-              <div class="cost-card-value">${totalPages}</div>
-              <div class="cost-card-label">Pages</div>
-            </div>
-          </div>
-          <div class="cost-estimate-note">
-            Estimated at $${estimatedPerPage}/page Mistral OCR rate. No processing time data available for this schema version.
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderBlockSegmentationSection() {
-    const stats = this.data.blockStats;
-    if (!stats) return '';
-
-    const breakdown = stats.blockTypeBreakdown || {};
-    const sorted = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-    const maxCount = sorted.length > 0 ? sorted[0][1] : 1;
-    const totalBlocks = stats.totalBlocks || 0;
-    const typeCount = sorted.length;
-    const pagesProcessed = stats.pagesProcessed || 0;
-    const avgPerPage = pagesProcessed > 0 ? (totalBlocks / pagesProcessed).toFixed(1) : '0';
-
-    const colors = ['#8b5cf6', '#6366f1', '#3b82f6', '#06b6d4', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#ec4899'];
-
-    const bars = sorted.map(([type, count], i) => {
-      const pct = ((count / totalBlocks) * 100).toFixed(1);
-      const widthPct = ((count / maxCount) * 100).toFixed(1);
-      const color = colors[i % colors.length];
-      return `
-        <div class="block-type-row">
-          <span class="block-type-label">${type.replace(/_/g, ' ')}</span>
-          <div class="block-type-bar-container">
-            <div class="block-type-bar" style="width: ${widthPct}%; background: ${color};"></div>
-          </div>
-          <span class="block-type-count">${count}</span>
-          <span class="block-type-pct">${pct}%</span>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>🧱 Block Segmentation</h3>
-          <span class="section-badge">${totalBlocks} blocks</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <div class="block-stats-summary">
-            <div class="block-stat-card">
-              <div class="block-stat-value">${totalBlocks}</div>
-              <div class="block-stat-label">Total Blocks</div>
-            </div>
-            <div class="block-stat-card">
-              <div class="block-stat-value">${typeCount}</div>
-              <div class="block-stat-label">Block Types</div>
-            </div>
-            <div class="block-stat-card">
-              <div class="block-stat-value">${pagesProcessed}</div>
-              <div class="block-stat-label">Pages Processed</div>
-            </div>
-            <div class="block-stat-card">
-              <div class="block-stat-value">${avgPerPage}</div>
-              <div class="block-stat-label">Blocks/Page Avg</div>
-            </div>
-          </div>
-          <div class="block-type-chart">
-            ${bars}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderPartiesSection(parties) {
-    if (!parties || parties.length === 0) return '';
-
-    const partyCards = parties.map(party => `
-      <div class="party-card">
-        <div class="party-avatar">${party.name?.charAt(0) || '?'}</div>
-        <div class="party-info">
-          <div class="party-name">${party.name}</div>
-          <div class="party-role">${party.role}</div>
-          ${party.abbreviation ? `<span class="party-abbr">${party.abbreviation}</span>` : ''}
-        </div>
-      </div>
-    `).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>👥 Parties</h3>
-          <span class="section-badge">${parties.length}</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          ${partyCards}
-        </div>
-      </div>
-    `;
-  }
-
-  renderNumberingSection(convention) {
-    if (!convention) return '';
-
-    const examples = (convention.examples || []).map(ex => 
-      `<span class="example-tag">${ex}</span>`
-    ).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>🔢 Numbering Convention</h3>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <div class="convention-grid">
-            <div class="convention-item">
-              <div class="convention-label">Primary Style</div>
-              <div class="convention-value">${this.formatStyle(convention.primary_style)}</div>
-            </div>
-            <div class="convention-item">
-              <div class="convention-label">Subsection Style</div>
-              <div class="convention-value">${this.formatStyle(convention.subsection_style)}</div>
-            </div>
-            <div class="convention-item">
-              <div class="convention-label">Max Depth</div>
-              <div class="convention-value">Level ${convention.max_depth}</div>
-            </div>
-            <div class="convention-item">
-              <div class="convention-label">Detected Pattern</div>
-              <div class="convention-value">${convention.max_depth > 3 ? 'Complex' : convention.max_depth > 2 ? 'Moderate' : 'Standard'}</div>
-            </div>
-          </div>
-          ${examples ? `
-            <div style="margin-top: var(--spacing-md)">
-              <div class="convention-label">Examples Found</div>
-              <div class="examples-list">${examples}</div>
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  renderHierarchySection(hierarchy) {
-    if (!hierarchy || hierarchy.length === 0) return '';
-
-    const items = hierarchy.slice(0, 50).map(item => {
-      return `
-        <div class="hierarchy-item" style="padding-left: ${(item.indent_level - 1) * 16}px">
-          <span class="hierarchy-number">${item.section_number}</span>
-          <span class="hierarchy-title">${this.truncate(item.title, 50)}</span>
-          <span class="level-badge">L${item.indent_level}</span>
-        </div>
-      `;
-    }).join('');
-
-    const moreCount = hierarchy.length - 50;
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📑 Structural Hierarchy</h3>
-          <span class="section-badge">${hierarchy.length} sections</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <div class="hierarchy-tree">
-            ${items}
-            ${moreCount > 0 ? `<div style="padding: var(--spacing-md); color: var(--text-muted); text-align: center;">... and ${moreCount} more sections</div>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderCrossReferencesSection(refs) {
-    if (!refs || refs.length === 0) return '';
-
-    const items = refs.slice(0, 20).map(ref => `
-      <div class="ref-item">
-        <span class="ref-text">"${ref.reference_text}"</span>
-        <span class="ref-arrow">→</span>
-        <span class="ref-target">${ref.target_section}</span>
-      </div>
-    `).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>🔗 Cross-References</h3>
-          <span class="section-badge">${refs.length}</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          ${items}
-          ${refs.length > 20 ? `<div style="color: var(--text-muted); text-align: center; margin-top: var(--spacing-sm)">... and ${refs.length - 20} more</div>` : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  renderAttachmentsSection(attachments) {
-    if (!attachments || attachments.length === 0) return '';
-
-    const items = attachments.map(att => `
-      <div class="attachment-item">
-        <span class="attachment-icon">📎</span>
-        <div class="attachment-info">
-          <div class="attachment-id">${att.identifier}</div>
-          <div class="attachment-title">${att.title}</div>
-        </div>
-      </div>
-    `).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📁 Attachments</h3>
-          <span class="section-badge">${attachments.length}</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          ${items}
-        </div>
-      </div>
-    `;
-  }
-
-  renderDatesSection(dates) {
-    if (!dates || dates.length === 0) return '';
-
-    const items = dates.map(date => `
-      <div class="data-row">
-        <span class="data-label">${this.formatDateType(date.date_type)}</span>
-        <span class="data-value">${date.date_value}</span>
-      </div>
-    `).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📅 Key Dates</h3>
-          <span class="section-badge">${dates.length}</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          ${items}
-        </div>
-      </div>
-    `;
-  }
-
-  renderDefinitionsSection(definitions) {
-    if (!definitions || definitions.length === 0) return '';
-
-    const items = definitions.slice(0, 15).map(def => `
-      <div style="margin-bottom: var(--spacing-md); padding-bottom: var(--spacing-md); border-bottom: 1px solid var(--border-subtle);">
-        <div style="font-weight: 600; color: var(--accent-secondary); margin-bottom: var(--spacing-xs);">"${def.term}"</div>
-        <div style="color: var(--text-secondary); font-size: 0.9rem;">${this.truncate(def.definition, 200)}</div>
-        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: var(--spacing-xs);">§ ${def.section_reference}</div>
-      </div>
-    `).join('');
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📖 Definitions</h3>
-          <span class="section-badge">${definitions.length}</span>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          ${items}
-          ${definitions.length > 15 ? `<div style="color: var(--text-muted); text-align: center;">... and ${definitions.length - 15} more definitions</div>` : ''}
-        </div>
-      </div>
-    `;
-  }
-
-  renderSummarySection(summary) {
-    if (!summary) return '';
-
-    return `
-      <div class="section">
-        <div class="section-header">
-          <h3>📝 Summary</h3>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <p style="color: var(--text-secondary); line-height: 1.7;">${summary}</p>
-        </div>
-      </div>
-    `;
-  }
-
-  renderPagesSection(pages) {
-    if (!pages || pages.length === 0) return '';
-
-    this.pagesData = pages;
-    const totalImages = pages.reduce((acc, p) => {
-      const np = this.normalizePage(p);
-      return acc + np.images.length;
-    }, 0);
-    const totalChars = pages.reduce((acc, p) => acc + (p.characterCount || 0), 0);
-
-    const skeletonCards = pages.map((page, idx) => {
-      const np = this.normalizePage(page);
-      return `
-        <div class="page-card page-skeleton" data-page-index="${idx}">
-          <div class="page-card-header">
-            <div class="page-number-badge">Page ${np.pageNum}</div>
-            <div class="page-stats">
-              <span class="page-stat">${np.characterCount.toLocaleString()} chars</span>
-              ${np.images.length > 0 ? `<span class="page-stat highlight">🖼️ ${np.images.length} images</span>` : ''}
-            </div>
-          </div>
-          <div class="page-card-content">
-            <div class="page-skeleton-placeholder">
-              <div class="skeleton-line skeleton-line-long"></div>
-              <div class="skeleton-line skeleton-line-medium"></div>
-              <div class="skeleton-line skeleton-line-short"></div>
-              <div class="skeleton-line skeleton-line-long"></div>
-              <div class="skeleton-line skeleton-line-medium"></div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div class="section pages-section">
-        <div class="section-header">
-          <h3>📄 Page-Level OCR Extraction</h3>
-          <div style="display: flex; gap: var(--spacing-sm);">
-            <span class="section-badge">${pages.length} pages</span>
-            ${totalImages > 0 ? `<span class="section-badge highlight">${totalImages} images detected</span>` : ''}
-          </div>
-          <span class="section-toggle">▼</span>
-        </div>
-        <div class="section-content">
-          <div class="ocr-depth-banner">
-            <div class="ocr-depth-icon">🔬</div>
-            <div class="ocr-depth-text">
-              <strong>All ${pages.length} Pages — Lazy Loaded</strong>
-              <p>${totalChars.toLocaleString()} total characters extracted. Each page loads as you scroll.</p>
-            </div>
-          </div>
-          <div class="page-cards-container">
-            ${skeletonCards}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderFullPageCard(idx) {
-    const page = this.pagesData[idx];
-    if (!page) return '';
-    const np = this.normalizePage(page);
-    const markdownPreview = this.truncate(np.markdown, 800);
-    const hasImages = np.images.length > 0;
-
-    let imagesHtml = '';
-    if (hasImages) {
-      // Handle both v1 (images with imageId) and v2 (imageAnnotations with bbox) schemas
-      const imageCards = np.images.map((img, i) => {
-        const hasBbox = img.topLeft && img.bottomRight;
-        return `
-          <div class="image-annotation-card">
-            <div class="image-annotation-header">
-              <span class="image-type-badge">${img.type || 'Image'}</span>
-              <span class="image-id">ID: ${img.id || img.imageId || i + 1}</span>
-            </div>
-            ${img.context ? `<div class="image-context">${this.truncate(img.context, 100)}</div>` : ''}
-            ${hasBbox ? `
-              <div class="bbox-info">
-                <span class="bbox-label">Bounding Box:</span>
-                <span class="bbox-coords">[${img.topLeft.x?.toFixed(2)}, ${img.topLeft.y?.toFixed(2)}] → [${img.bottomRight.x?.toFixed(2)}, ${img.bottomRight.y?.toFixed(2)}]</span>
-              </div>
+            <div class="data-row"><span class="data-label">Pages with Content</span><span class="data-value">${prescan.pagesWithContent}</span></div>
+            <div class="data-row"><span class="data-label">Segments Detected</span><span class="data-value">${prescan.segmentCount}</span></div>
+            <div class="data-row"><span class="data-label">Convention Breaks</span><span class="data-value">${prescan.conventionBreaks}</span></div>
+            <div class="data-row"><span class="data-label">Tables Detected</span><span class="data-value">${prescan.totalTables}</span></div>
+            <div class="data-row"><span class="data-label">Images Detected</span><span class="data-value">${prescan.totalImages}</span></div>
+            ${dominantRows ? `
+              <div class="subsection-title" style="margin-top: var(--spacing-md);">Dominant Patterns</div>
+              <table class="data-table">
+                <thead><tr><th>Level</th><th>Pattern</th><th>Count</th></tr></thead>
+                <tbody>${dominantRows}</tbody>
+              </table>
             ` : ''}
+            ${segmentList ? `<div class="subsection-title" style="margin-top: var(--spacing-md);">Segments</div><div class="tag-list">${segmentList}</div>` : ''}
+            ${breakPages ? `<div class="subsection-title" style="margin-top: var(--spacing-md);">Break Pages</div><div class="tag-list">${breakPages}</div>` : ''}
           </div>
-        `;
-      }).join('');
-
-      imagesHtml = `
-        <div class="images-section">
-          <div class="preview-label">🖼️ Detected Images (${np.images.length})</div>
-          <div class="image-annotations">${imageCards}</div>
-        </div>
-      `;
-    }
-
-    let dimensionsHtml = '';
-    if (np.dimensions) {
-      dimensionsHtml = `
-        <div class="page-dimensions">
-          <span class="preview-label">📐 Dimensions</span>
-          <span>${np.dimensions.width} × ${np.dimensions.height} @ ${np.dimensions.dpi}dpi</span>
         </div>
       `;
     }
 
     return `
-      <div class="page-card-header">
-        <div class="page-number-badge">Page ${np.pageNum}</div>
-        <div class="page-stats">
-          <span class="page-stat">${np.characterCount.toLocaleString()} chars</span>
-          ${hasImages ? `<span class="page-stat highlight">🖼️ ${np.images.length} images</span>` : ''}
+      <div class="section">
+        <div class="section-header">
+          <h3>Metadata Dashboard</h3>
+          <span class="section-badge">${meta.schema_version || 'v3'}</span>
+          <span class="section-toggle">▼</span>
         </div>
-      </div>
-      <div class="page-card-content">
-        <div class="markdown-preview">
-          <div class="preview-label">📄 Extracted Markdown</div>
-          <pre class="markdown-code">${this.escapeHtml(markdownPreview)}</pre>
+        <div class="section-content">
+          ${statCards}
+          ${costGrid}
+          ${timeGrid}
+          ${qualitySection}
+          ${prescanHtml}
         </div>
-        ${imagesHtml}
-        ${dimensionsHtml}
       </div>
     `;
   }
 
-  setupPageObserver() {
-    if (this._pageObserver) {
-      this._pageObserver.disconnect();
-      this._pageObserver = null;
+  // ============================================
+  // Section 2: Document Info
+  // ============================================
+  renderDocumentInfo(docInfo) {
+    if (!docInfo) return '';
+
+    // Title/type/language row
+    const infoRow = `
+      <div class="stat-grid stat-grid-3">
+        <div class="stat-card">
+          <div class="stat-card-value" style="font-size: 0.95rem;">${this.escapeHtml(docInfo.title || 'N/A')}</div>
+          <div class="stat-card-label">Title</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value" style="text-transform: capitalize;">${docInfo.document_type || 'N/A'}</div>
+          <div class="stat-card-label">Document Type</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${docInfo.language || 'N/A'}</div>
+          <div class="stat-card-label">Language</div>
+        </div>
+      </div>
+    `;
+
+    // Parties
+    let partiesHtml = '';
+    if (docInfo.parties && docInfo.parties.length > 0) {
+      const cards = docInfo.parties.map(p => `
+        <div class="party-card">
+          <div class="party-avatar">${(p.name || '?').charAt(0)}</div>
+          <div class="party-info">
+            <div class="party-name">${this.escapeHtml(p.name)}</div>
+            <div class="party-role">${this.escapeHtml(p.role)}</div>
+            ${p.abbreviation ? `<span class="party-abbr">${this.escapeHtml(p.abbreviation)}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+      partiesHtml = `<div class="subsection-title">Parties</div>${cards}`;
     }
 
-    const scrollRoot = document.getElementById('jsonContent');
-    if (!scrollRoot) return;
+    // Key dates
+    let datesHtml = '';
+    if (docInfo.key_dates && docInfo.key_dates.length > 0) {
+      const rows = docInfo.key_dates.map(d => `
+        <div class="date-row">
+          <span class="date-type">${this.escapeHtml(this.formatLabel(d.date_type))}</span>
+          <span class="date-value">${this.escapeHtml(d.date_value)}</span>
+          <span class="date-context">${this.escapeHtml(d.context || '')}</span>
+        </div>
+      `).join('');
+      datesHtml = `<div class="subsection-title">Key Dates</div>${rows}`;
+    }
 
-    const skeletons = scrollRoot.querySelectorAll('.page-skeleton[data-page-index]');
-    if (skeletons.length === 0) return;
+    // Numbering convention
+    let numberingHtml = '';
+    const nc = docInfo.numbering_convention;
+    if (nc) {
+      const levelsRows = (nc.level_conventions || []).map(lc => `
+        <tr>
+          <td>${lc.level}</td>
+          <td>${this.escapeHtml(lc.style)}</td>
+          <td>${(lc.examples || []).map(e => `<code>${this.escapeHtml(e)}</code>`).join(', ')}</td>
+          <td><code>${this.escapeHtml(lc.label_pattern || '')}</code></td>
+        </tr>
+      `).join('');
 
-    this._pageObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const card = entry.target;
-          const idx = parseInt(card.getAttribute('data-page-index'), 10);
-          card.innerHTML = this.renderFullPageCard(idx);
-          card.classList.remove('page-skeleton');
-          card.classList.add('page-card-loaded');
-          this._pageObserver.unobserve(card);
-        }
+      const notes = (nc.consistency_notes || []).map(n => `<li>${this.escapeHtml(n)}</li>`).join('');
+
+      numberingHtml = `
+        <div class="subsection-title">Numbering Convention</div>
+        <div class="stat-grid stat-grid-3" style="margin-bottom: var(--spacing-md);">
+          <div class="stat-card"><div class="stat-card-value">${this.escapeHtml(nc.primary_style || 'N/A')}</div><div class="stat-card-label">Primary Style</div></div>
+          <div class="stat-card"><div class="stat-card-value">L${nc.max_depth || '-'}</div><div class="stat-card-label">Max Depth</div></div>
+          <div class="stat-card"><div class="stat-card-value">${(nc.level_conventions || []).length}</div><div class="stat-card-label">Levels Defined</div></div>
+        </div>
+        ${levelsRows ? `
+          <table class="data-table">
+            <thead><tr><th>Level</th><th>Style</th><th>Examples</th><th>Label Pattern</th></tr></thead>
+            <tbody>${levelsRows}</tbody>
+          </table>
+        ` : ''}
+        ${notes ? `<div class="subsection-title" style="margin-top: var(--spacing-md);">Consistency Notes</div><ul class="notes-list">${notes}</ul>` : ''}
+      `;
+    }
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>Document Info</h3>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          ${infoRow}
+          ${partiesHtml}
+          ${datesHtml}
+          ${numberingHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================
+  // Section 3: Definitions
+  // ============================================
+  renderDefinitions(data) {
+    // Aggregate definitions from document_info and per-segment
+    const allDefs = [];
+
+    // From document_info
+    if (data.document_info?.definitions) {
+      data.document_info.definitions.forEach(d => {
+        allDefs.push({ ...d, source: 'document_info' });
       });
-    }, {
-      root: scrollRoot,
-      rootMargin: '200px 0px'
+    }
+
+    // From each segment
+    (data.segments || []).forEach(seg => {
+      if (seg.definitions && seg.definitions.length > 0) {
+        seg.definitions.forEach(d => {
+          // Avoid duplicates by term
+          if (!allDefs.some(existing => existing.term === d.term)) {
+            allDefs.push({ ...d, source: seg.segment?.segment_id || 'segment' });
+          }
+        });
+      }
     });
 
-    skeletons.forEach(el => this._pageObserver.observe(el));
+    if (allDefs.length === 0) return '';
+
+    // Store for "load more"
+    this._allDefinitions = allDefs;
+    const INITIAL = 30;
+    const defsToShow = allDefs.slice(0, INITIAL);
+
+    const cards = defsToShow.map(d => this.renderDefinitionCard(d)).join('');
+    const moreCount = allDefs.length - INITIAL;
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>Definitions</h3>
+          <span class="section-badge">${allDefs.length}</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <input type="text" class="filter-input" placeholder="Filter definitions..." oninput="window.__app.filterDefinitions(this.value)" />
+          <div id="definitionsContainer">
+            ${cards}
+            ${moreCount > 0 ? `<button class="btn-load-more load-more-defs">Load ${moreCount} more definitions</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderDefinitionCard(d) {
+    return `
+      <div class="definition-card" data-term="${this.escapeHtml(d.term?.toLowerCase() || '')}">
+        <div class="def-term">${this.escapeHtml(d.term)}</div>
+        <div class="def-text">${this.escapeHtml(d.definition)}</div>
+        <div class="def-meta">
+          ${d.section_path ? `<span class="tag">&#167; ${this.escapeHtml(d.section_path)}</span>` : ''}
+          ${d.segment_id ? `<span class="tag">${this.escapeHtml(d.segment_id)}</span>` : ''}
+          ${d.source ? `<span class="tag tag-muted">${this.escapeHtml(d.source)}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  renderAllDefinitions() {
+    if (!this._allDefinitions) return;
+    const container = document.getElementById('definitionsContainer');
+    if (!container) return;
+    container.innerHTML = this._allDefinitions.map(d => this.renderDefinitionCard(d)).join('');
+  }
+
+  filterDefinitions(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.definition-card').forEach(card => {
+      const term = card.dataset.term || '';
+      card.style.display = term.includes(q) ? '' : 'none';
+    });
   }
 
   // ============================================
-  // Utility: Normalize page schema differences
+  // Section 4: Skeleton / Table of Contents
   // ============================================
-  normalizePage(page) {
-    return {
-      pageNum: page.pageNumber ?? (page.pageIndex + 1),
-      markdown: page.markdown || '',
-      images: page.imageAnnotations || page.images || [],
-      characterCount: page.characterCount || 0,
-      dimensions: page.dimensions || null
-    };
+  renderSkeleton(docInfo) {
+    const skeleton = docInfo.skeleton;
+    if (!skeleton || skeleton.length === 0) return '';
+
+    const items = skeleton.map(item => `
+      <div class="skeleton-item" data-segment-id="${this.escapeHtml(item.segment_id || '')}" data-title="${this.escapeHtml((item.title || '').toLowerCase())}" style="padding-left: ${(item.indent_level || 0) * 18}px;">
+        <span class="skel-label">${this.escapeHtml(item.section_label || '')}</span>
+        <span class="skel-title">${this.escapeHtml(this.truncate(item.title || '', 80))}</span>
+        <span class="tag tag-sm">${this.escapeHtml(item.segment_id || '')}</span>
+        ${item.page_number ? `<span class="skel-page">p.${item.page_number}</span>` : ''}
+      </div>
+    `).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>Skeleton / Table of Contents</h3>
+          <span class="section-badge">${skeleton.length} entries</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          <input type="text" class="filter-input" placeholder="Filter skeleton..." oninput="window.__app.filterSkeleton(this.value)" />
+          <div class="skeleton-tree" id="skeletonTree">
+            ${items}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  filterSkeleton(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.skeleton-item').forEach(item => {
+      const title = item.dataset.title || '';
+      item.style.display = title.includes(q) ? '' : 'none';
+    });
   }
 
   // ============================================
-  // Utility: Determine extraction approach
+  // Section 5: Segments (main content)
   // ============================================
-  getApproach() {
-    const schema = this.data?.metadata?.schemaVersion;
-    if (schema === 'myhero-v2') {
-      return { pass: '2-Pass', label: 'Pass 1: OCR extracts raw markdown. Pass 2: Mistral Large LLM structures content into typed blocks with hierarchy and formatting metadata', schema };
+  renderSegments(segments) {
+    if (!segments || segments.length === 0) return '';
+
+    const accordions = segments.map((seg, idx) => {
+      const s = seg.segment || {};
+      const stats = seg.stats || {};
+      const icon = SEGMENT_ICONS[s.segment_type] || '📄';
+      const blockCount = stats.total_blocks || 0;
+
+      return `
+        <div class="segment-accordion collapsed" data-segment-id="${this.escapeHtml(s.segment_id || '')}" data-segment-index="${idx}">
+          <div class="segment-header">
+            <div class="segment-header-left">
+              <span class="segment-icon">${icon}</span>
+              <span class="segment-type-badge">${this.escapeHtml(this.formatLabel(s.segment_type || 'unknown'))}</span>
+              <span class="segment-title">${this.escapeHtml(s.title || 'Untitled')}</span>
+            </div>
+            <div class="segment-header-right">
+              <span class="segment-pages">p.${s.page_start || '?'}–${s.page_end || '?'}</span>
+              <span class="segment-block-count">${blockCount} blocks</span>
+              <button class="segment-json-btn" data-segment-index="${idx}" title="View segment JSON">{ }</button>
+            </div>
+          </div>
+          <div class="segment-body">
+            <div class="segment-stats-bar" id="segStats-${idx}"></div>
+            <div class="segment-blocks" id="segBlocks-${idx}"></div>
+            <div class="segment-tables" id="segTables-${idx}"></div>
+            <div class="segment-crossrefs" id="segCrossrefs-${idx}"></div>
+            <div class="segment-defs" id="segDefs-${idx}"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>Segments</h3>
+          <span class="section-badge">${segments.length} segments</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content segments-container">
+          ${accordions}
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================
+  // Segment Expand Handler (Lazy Load)
+  // ============================================
+  onSegmentExpand(segId, accordion) {
+    if (this.renderedSegments.has(segId)) return;
+    this.renderedSegments.add(segId);
+
+    const data = this.cache[this.currentDoc];
+    if (!data || !data.segments) return;
+
+    const idx = parseInt(accordion.dataset.segmentIndex, 10);
+    const seg = data.segments[idx];
+    if (!seg) return;
+
+    const stats = seg.stats || {};
+    const blocks = seg.blocks || [];
+    const tables = seg.tables || [];
+    const crossRefs = seg.cross_references || [];
+    const defs = seg.definitions || [];
+
+    // Render stats bar
+    this.renderSegmentStats(idx, stats);
+
+    // Render blocks (batched for large segments)
+    this.segmentBlockOffset[segId] = 0;
+    this.renderBlockBatch(idx, segId, blocks);
+
+    // Render tables
+    this.renderSegmentTables(idx, tables);
+
+    // Render cross-references
+    this.renderSegmentCrossRefs(idx, crossRefs);
+
+    // Render segment definitions
+    this.renderSegmentDefs(idx, defs);
+  }
+
+  // ============================================
+  // Segment Stats Bar
+  // ============================================
+  renderSegmentStats(idx, stats) {
+    const container = document.getElementById(`segStats-${idx}`);
+    if (!container) return;
+
+    const typeCounts = stats.block_type_counts || {};
+    const total = stats.total_blocks || 0;
+    const sorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+
+    const barSegments = sorted.map(([type, count]) => {
+      const pct = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+      const color = BLOCK_TYPE_COLORS[type] || '#64748b';
+      return `<div class="type-bar-segment" style="width: ${pct}%; background: ${color};" title="${type}: ${count} (${pct}%)"></div>`;
+    }).join('');
+
+    const legend = sorted.slice(0, 6).map(([type, count]) => {
+      const color = BLOCK_TYPE_COLORS[type] || '#64748b';
+      return `<span class="type-legend-item"><span class="type-legend-dot" style="background:${color}"></span>${type.replace(/_/g, ' ')} (${count})</span>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="seg-stats-mini">
+        <span>${total} blocks</span>
+        <span>Max depth: ${stats.max_depth ?? '-'}</span>
+        <span>Tables: ${stats.table_count ?? 0}</span>
+      </div>
+      <div class="type-bar">${barSegments}</div>
+      <div class="type-legend">${legend}</div>
+    `;
+  }
+
+  // ============================================
+  // Block Rendering (Batched)
+  // ============================================
+  renderBlockBatch(idx, segId, blocks) {
+    const container = document.getElementById(`segBlocks-${idx}`);
+    if (!container) return;
+
+    const BATCH = 50;
+    const offset = this.segmentBlockOffset[segId] || 0;
+    const batch = blocks.slice(offset, offset + BATCH);
+
+    if (batch.length === 0) return;
+
+    const html = batch.map(block => this.renderBlock(block)).join('');
+
+    // Remove existing sentinel
+    const existingSentinel = container.querySelector('.block-sentinel');
+    if (existingSentinel) existingSentinel.remove();
+
+    container.insertAdjacentHTML('beforeend', html);
+    this.segmentBlockOffset[segId] = offset + batch.length;
+
+    // Add sentinel if more blocks remain
+    if (offset + batch.length < blocks.length) {
+      const sentinel = document.createElement('div');
+      sentinel.className = 'block-sentinel';
+      sentinel.innerHTML = `<div class="loading-more">Loading more blocks... (${offset + batch.length} / ${blocks.length})</div>`;
+      container.appendChild(sentinel);
+
+      // Set up IntersectionObserver
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            observer.disconnect();
+            this.renderBlockBatch(idx, segId, blocks);
+          }
+        });
+      }, {
+        root: document.getElementById('contentScroll'),
+        rootMargin: '300px 0px',
+      });
+      observer.observe(sentinel);
+
+      // Track for cleanup
+      if (!this.blockObservers[segId]) this.blockObservers[segId] = [];
+      this.blockObservers[segId].push(observer);
     }
-    return { pass: '1-Pass', label: 'Single-pass OCR extraction \u2013 extracts markdown and annotations in one shot', schema: schema || 'myhero-v1' };
   }
 
-  // Utility methods
-  formatStyle(style) {
-    if (!style) return 'N/A';
-    return style.split('_').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
+  renderBlock(block) {
+    const typeColor = BLOCK_TYPE_COLORS[block.block_type] || '#64748b';
+    const fmt = block.formatting || {};
+
+    // Formatting badges
+    const fmtBadges = [];
+    if (fmt.is_bold) fmtBadges.push('<span class="fmt-badge fmt-bold">B</span>');
+    if (fmt.is_italic) fmtBadges.push('<span class="fmt-badge fmt-italic">I</span>');
+    if (fmt.is_underlined) fmtBadges.push('<span class="fmt-badge fmt-underline">U</span>');
+
+    // Cross-page badges
+    const pageBadges = [];
+    if (block.continues_from_previous_page) pageBadges.push('<span class="tag tag-sm tag-info">Continues from prev</span>');
+    if (block.continues_on_next_page) pageBadges.push('<span class="tag tag-sm tag-info">Continues on next</span>');
+    if (block.has_table) pageBadges.push('<span class="tag tag-sm tag-warn">Has table</span>');
+    if (block.has_image) pageBadges.push('<span class="tag tag-sm tag-warn">Has image</span>');
+
+    // Indent indicator
+    const indent = block.indent_level || 0;
+    const indentDots = indent > 0 ? '<span class="indent-dots">' + '·'.repeat(indent) + '</span> L' + indent : '';
+
+    return `
+      <div class="block-card" style="margin-left: ${indent * 12}px;">
+        <div class="block-header">
+          <span class="block-id">${this.escapeHtml(block.block_id || '')}</span>
+          <span class="block-type-badge" style="background: ${typeColor};">${this.escapeHtml(block.block_type || '')}</span>
+          <span class="block-section-path">${this.escapeHtml(block.section_path || '')}</span>
+          <span class="block-page">p.${block.page_number || '?'}</span>
+          ${fmtBadges.join('')}
+        </div>
+        <div class="block-content">${this.escapeHtml(block.content || '')}</div>
+        ${block.raw_markdown ? `
+          <button class="raw-md-toggle">Show raw markdown</button>
+          <pre class="raw-md-content hidden">${this.escapeHtml(block.raw_markdown)}</pre>
+        ` : ''}
+        <div class="block-meta">
+          ${indentDots ? `<span class="block-indent">${indentDots}</span>` : ''}
+          ${block.sequence_label ? `<span class="tag tag-sm">${this.escapeHtml(block.sequence_label)}</span>` : ''}
+          ${block.parent_section_path ? `<span class="tag tag-sm tag-muted">Parent: ${this.escapeHtml(block.parent_section_path)}</span>` : ''}
+          ${pageBadges.join('')}
+        </div>
+      </div>
+    `;
   }
 
-  formatDateType(type) {
-    if (!type) return 'Date';
-    return type.split('_').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
+  // ============================================
+  // Table Rendering
+  // ============================================
+  renderSegmentTables(idx, tables) {
+    if (!tables || tables.length === 0) return;
+    const container = document.getElementById(`segTables-${idx}`);
+    if (!container) return;
+
+    const html = tables.map(t => {
+      const headers = t.headers || [];
+      const rows = t.rows || [];
+      const headRow = headers.length > 0
+        ? `<thead><tr>${headers.map(h => `<th>${this.escapeHtml(h)}</th>`).join('')}</tr></thead>`
+        : '';
+      const bodyRows = rows.map(row => {
+        const cells = Array.isArray(row) ? row : Object.values(row);
+        return `<tr>${cells.map(c => `<td>${this.escapeHtml(String(c ?? ''))}</td>`).join('')}</tr>`;
+      }).join('');
+
+      return `
+        <div class="table-card">
+          <div class="table-card-header">
+            <span class="tag">${this.escapeHtml(t.table_id || '')}</span>
+            <span class="table-dims">${t.row_count || rows.length}r × ${t.col_count || headers.length}c</span>
+            <span class="block-section-path">${this.escapeHtml(t.section_path || '')}</span>
+            <span class="block-page">p.${t.page_number || '?'}</span>
+          </div>
+          <div class="table-rendered-wrapper">
+            <table class="table-rendered">${headRow}<tbody>${bodyRows}</tbody></table>
+          </div>
+          ${t.raw_markdown ? `
+            <button class="raw-md-toggle">Show raw markdown</button>
+            <pre class="raw-md-content hidden">${this.escapeHtml(t.raw_markdown)}</pre>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = `<div class="subsection-title">Tables (${tables.length})</div>${html}`;
+  }
+
+  // ============================================
+  // Cross-References Rendering
+  // ============================================
+  renderSegmentCrossRefs(idx, refs) {
+    if (!refs || refs.length === 0) return;
+    const container = document.getElementById(`segCrossrefs-${idx}`);
+    if (!container) return;
+
+    const html = refs.map(ref => {
+      const targetType = ref.target_type || 'unknown';
+      const typeClass = targetType === 'internal' ? 'tag-success' : targetType === 'external' ? 'tag-info' : 'tag-warn';
+      const confidence = ref.confidence ?? 0;
+      const confPct = (confidence * 100).toFixed(0);
+
+      return `
+        <div class="crossref-row">
+          <span class="crossref-text">${this.escapeHtml(ref.reference_text || '')}</span>
+          <span class="tag tag-sm ${typeClass}">${targetType}</span>
+          <span class="crossref-target">${this.escapeHtml(ref.resolved_section_path || ref.external_document_name || '-')}</span>
+          <div class="confidence-bar"><div class="confidence-fill" style="width: ${confPct}%;"></div></div>
+          <span class="confidence-val">${confPct}%</span>
+          ${ref.context_sentence ? `
+            <div class="crossref-ctx hidden">${this.escapeHtml(ref.context_sentence)}</div>
+            <button class="crossref-ctx-toggle">Show context</button>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = `<div class="subsection-title">Cross-References (${refs.length})</div>${html}`;
+  }
+
+  // ============================================
+  // Segment Definitions
+  // ============================================
+  renderSegmentDefs(idx, defs) {
+    if (!defs || defs.length === 0) return;
+    const container = document.getElementById(`segDefs-${idx}`);
+    if (!container) return;
+
+    const html = defs.map(d => `
+      <div class="definition-card definition-card-sm">
+        <span class="def-term">${this.escapeHtml(d.term)}</span>
+        <span class="def-text">${this.escapeHtml(d.definition)}</span>
+      </div>
+    `).join('');
+
+    container.innerHTML = `<div class="subsection-title">Definitions (${defs.length})</div>${html}`;
+  }
+
+  // ============================================
+  // Section 6: Images Summary
+  // ============================================
+  renderImagesSummary(segments) {
+    const allImages = [];
+    segments.forEach(seg => {
+      if (seg.images_summary && seg.images_summary.length > 0) {
+        seg.images_summary.forEach(img => {
+          allImages.push({ ...img, segment_id: seg.segment?.segment_id });
+        });
+      }
+    });
+
+    if (allImages.length === 0) return '';
+
+    const cards = allImages.map(img => `
+      <div class="image-summary-card">
+        <span class="tag">${this.escapeHtml(img.image_type || img.type || 'image')}</span>
+        <span>${this.escapeHtml(img.description || img.context || '')}</span>
+        <span class="tag tag-sm tag-muted">${this.escapeHtml(img.segment_id || '')}</span>
+        ${img.page_number ? `<span class="block-page">p.${img.page_number}</span>` : ''}
+      </div>
+    `).join('');
+
+    return `
+      <div class="section">
+        <div class="section-header">
+          <h3>Images Summary</h3>
+          <span class="section-badge">${allImages.length}</span>
+          <span class="section-toggle">▼</span>
+        </div>
+        <div class="section-content">
+          ${cards}
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================
+  // Raw JSON Modal
+  // ============================================
+  openRawJsonModal(data) {
+    const modal = document.getElementById('rawJsonModal');
+    const content = document.getElementById('rawJsonContent');
+    modal.classList.remove('hidden');
+
+    const jsonStr = JSON.stringify(data, null, 2);
+    const size = new Blob([jsonStr]).size;
+
+    if (size > 1_000_000) {
+      content.textContent = 'Formatting large JSON...';
+      // Use setTimeout to avoid UI freeze
+      setTimeout(() => {
+        content.textContent = jsonStr;
+      }, 50);
+    } else {
+      content.textContent = jsonStr;
+    }
+  }
+
+  // ============================================
+  // Cleanup
+  // ============================================
+  cleanupObservers() {
+    Object.values(this.blockObservers).forEach(observers => {
+      observers.forEach(obs => obs.disconnect());
+    });
+    this.blockObservers = {};
+  }
+
+  // ============================================
+  // Utility Functions
+  // ============================================
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   truncate(str, maxLen) {
@@ -1022,70 +1107,15 @@ class DocumentBenchmark {
     return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
   }
 
-  escapeHtml(str) {
+  formatLabel(str) {
     if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  showError(message) {
-    document.getElementById('jsonContent').innerHTML = `
-      <div style="text-align: center; padding: 40px; color: var(--error);">
-        <p>⚠️ ${message}</p>
-      </div>
-    `;
-  }
-
-  // ============================================
-  // NEW METHOD - ADE Format Detection
-  // ============================================
-  // Checks if data is in ADE format (has 'sections' array)
-  // Original code above is preserved - this is addition for ADE support
-  // ============================================
-  
-  isADEFormat(data) {
-    // Check if data is in ADE format (has 'sections' array instead of 'documentAnnotation')
-    return data && !data.documentAnnotation && Array.isArray(data.sections);
-  }
-
-  // ============================================
-  // NEW METHOD - Dynamic Technique Options
-  // ============================================
-  // Updates the technique selector dropdown based on available techniques
-  // for the currently selected document
-  // ============================================
-  updateTechniqueOptions() {
-    const config = DOCUMENTS[this.currentDocument];
-    const techniqueSelect = document.getElementById('techniqueSelect');
-    const availableTechniques = config.results || {};
-    
-    // Technique display names mapping
-    const techniqueNames = {
-      'mistral': 'Mistral OCR Latest',
-      'ade-modify': 'ADE Modify'
-    };
-    
-    // Clear existing options
-    techniqueSelect.innerHTML = '';
-    
-    // Add options for available techniques
-    Object.keys(availableTechniques).forEach(techKey => {
-      const option = document.createElement('option');
-      option.value = techKey;
-      option.textContent = techniqueNames[techKey] || techKey;
-      
-      // Set as selected if it matches current technique (if available) or first option
-      if (techKey === this.currentTechnique || 
-          (techniqueSelect.options.length === 0 && techKey === Object.keys(availableTechniques)[0])) {
-        option.selected = true;
-        this.currentTechnique = techKey;
-      }
-      
-      techniqueSelect.appendChild(option);
-    });
+    return str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 }
 
-// Initialize app
-new DocumentBenchmark();
+// ============================================
+// Initialize
+// ============================================
+const app = new DocumentBenchmark();
+// Expose for inline event handlers (filter inputs)
+window.__app = app;

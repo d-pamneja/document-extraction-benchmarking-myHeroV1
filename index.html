@@ -7,7 +7,7 @@
     <title>MyHero Document AI Benchmark</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="app">
@@ -21,66 +21,35 @@
           <span class="subtitle">Document AI Benchmark</span>
         </div>
         <div class="header-center">
-          <!-- Document Selector -->
-          <div class="selector-group">
-            <label>📑 Document:</label>
-            <select id="documentSelect">
-              <option value="contract" data-pdf="https://jjzhbhdtgeimxymsftkm.supabase.co/storage/v1/object/public/test/SampleContract-Shuttle-3.pdf">Santa Cruz Contract (10 pages)</option>
-              <option value="fidic" data-pdf="https://example30164.wordpress.com/wp-content/uploads/2016/04/fidic-db-yellow-book.pdf">FIDIC Yellow Book (130 pages)</option>
-            </select>
-          </div>
-          <!-- Technique Selector -->
-          <div class="selector-group">
-            <label>🤖 Technique:</label>
-            <select id="techniqueSelect">
-              <!-- Options will be dynamically populated by JavaScript -->
-              <!-- Original default: -->
-              <option value="mistral" selected>Mistral OCR Latest</option>
-              <!-- NEW: Now supports multiple techniques (mistral, ade-modify, ade-original, ade) -->
-              <!-- Populated dynamically based on selected document - see updateTechniqueOptions() in main.js -->
-            </select>
-          </div>
+          <nav class="doc-tabs">
+            <button class="doc-tab active" data-doc="contract">Contract <span class="tab-meta">10pg</span></button>
+            <button class="doc-tab" data-doc="fidic">FIDIC <span class="tab-meta">130pg</span></button>
+            <button class="doc-tab" data-doc="lma">LMA <span class="tab-meta">339pg</span></button>
+            <button class="doc-tab" data-doc="explanation">Tech Brief</button>
+          </nav>
         </div>
         <div class="header-right">
           <div class="stats-badge" id="processingStats">
             <span class="stat-item"><span class="stat-label">Pages:</span> <span id="totalPages">-</span></span>
             <span class="stat-divider">|</span>
-            <span class="stat-item"><span class="stat-label">Sections:</span> <span id="totalSections">-</span></span>
+            <span class="stat-item"><span class="stat-label">Segments:</span> <span id="totalSegments">-</span></span>
             <span class="stat-divider">|</span>
-            <span class="stat-item"><span class="stat-label">Depth:</span> <span id="maxDepth">-</span></span>
+            <span class="stat-item"><span class="stat-label">Blocks:</span> <span id="totalBlocks">-</span></span>
           </div>
         </div>
       </header>
 
       <!-- Main Content -->
       <main class="main-content">
-        <!-- Left Panel: PDF Viewer -->
-        <div class="panel pdf-panel">
-          <div class="panel-header">
-            <h2>📑 Document Preview</h2>
-            <div class="pdf-controls">
-              <button id="openInTab" class="btn-secondary">Open in New Tab ↗</button>
-            </div>
-          </div>
-          <div class="panel-content pdf-container">
-            <iframe 
-              id="pdfViewer"
-              src="https://jjzhbhdtgeimxymsftkm.supabase.co/storage/v1/object/public/test/SampleContract-Shuttle-3.pdf"
-              title="PDF Document">
-            </iframe>
-          </div>
+        <!-- Action bar -->
+        <div class="content-actions" id="contentActions">
+          <a id="pdfLink" class="btn-action" target="_blank" rel="noopener">View Source PDF ↗</a>
+          <button id="downloadJson" class="btn-action">Download JSON</button>
+          <button id="viewRawJson" class="btn-action">View Raw JSON</button>
         </div>
-
-        <!-- Right Panel: JSON Visualization -->
-        <div class="panel json-panel">
-          <div class="panel-header">
-            <h2>🔍 Extracted Structure</h2>
-            <div class="panel-actions">
-              <button id="toggleRawJson" class="btn-secondary">View Raw JSON</button>
-            </div>
-          </div>
-          <div class="panel-content" id="jsonContent">
-            <!-- Content will be dynamically loaded -->
+        <!-- Scrollable content body -->
+        <div class="content-scroll" id="contentScroll">
+          <div id="contentBody">
             <div class="loading-state">
               <div class="spinner"></div>
               <p>Loading document analysis...</p>
@@ -94,7 +63,10 @@
         <div class="modal-content">
           <div class="modal-header">
             <h3>Raw JSON Output</h3>
-            <button id="closeModal" class="btn-icon">✕</button>
+            <div class="modal-header-actions">
+              <button id="copyJson" class="btn-action btn-action-sm">Copy to Clipboard</button>
+              <button id="closeModal" class="btn-icon">✕</button>
+            </div>
           </div>
           <pre id="rawJsonContent"></pre>
         </div>
