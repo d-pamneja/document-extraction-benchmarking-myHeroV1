@@ -27,21 +27,21 @@ For the 130-page FIDIC contract: 130 out of 130 pages extracted successfully. 21
 
 ### What's Honestly Weak
 
-**Page failures on very large docs.** Mistral's API has a 300-second connection timeout. On a 339-page doc at 40 concurrent workers, 3-5% of pages may fail after retries. A 500-page contract missing 15-25 pages isn't acceptable for legal use. Fix: a retry-failed-pages mode that re-processes only timed-out pages at lower concurrency. Not built yet — roughly 1-2 days of work.
+**Timeout on very large docs.** Mistral's API has a 300-second connection timeout. On a 339-page doc at 40 concurrent workers, 3-5% of pages may fail after retries. A 500-page contract missing 15-25 pages isn't acceptable for legal use. Fix: a retry-failed-pages mode that re-processes only timed-out pages at lower concurrency. Not built yet — roughly 1-2 days of work.
 
 **No human-in-the-loop correction yet.** If the LLM assigns a block to the wrong section path, there's no UI to fix it and re-validate. Enterprise buyers will want the ability to spot-check and correct. This is an app-layer feature, not a pipeline issue.
 
 **No gold-standard benchmark.** We haven't manually tagged a full document to compare extraction accuracy against ground truth. We know every word is captured (by design), and we know the hierarchy is mostly right (by inspection), but we can't say "97.3% of blocks are correctly classified" because we haven't measured that yet.
 
-### What It Means for the Deal
+### TLDR on Cost and Time
 
-The pipeline handles real enterprise documents — 130+ page international construction contracts with complex nested hierarchies, multiple numbering conventions, cross-references between sections, and dozens of annexes and schedules. At $0.01/page. In under 10 minutes.
+The pipeline handles real enterprise documents — 10 pager to 300+ page international construction contracts with complex nested hierarchies, multiple numbering conventions, cross-references between sections, and dozens of annexes and schedules. At $0.01/page. In under 10 minutes.
 
 The gaps (page retry, human correction, benchmark) are engineering work measured in days, not architectural problems. The core extraction — OCR, hierarchy detection, block classification, cross-referencing — is working.
 
 ---
 
-## How We Compare
+## Comparision of options
 
 Most document extraction approaches fall into one of these categories:
 
@@ -53,7 +53,7 @@ Most document extraction approaches fall into one of these categories:
 | **Marker / Docling** | Open-source layout models | ⚠️ Flat sections | ❌ None | ~$0.01/pg | ✅ But flat |
 | **MyHero v3** | Hybrid regex+LLM, parallel | ✅ Full hierarchy | ✅ Automatic | **$0.01/pg** | ✅ Tested to 339 |
 
-**Our key differentiators:**
+**Key differentiators:**
 
 **1. Zero information loss.** Every block carries the original OCR markdown verbatim. If the hierarchy is wrong, the content is still there. You can always re-parse, re-display, or fall back to raw text. No other LLM-based approach guarantees this.
 

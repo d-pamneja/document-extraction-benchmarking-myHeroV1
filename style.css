@@ -1559,6 +1559,112 @@ body {
   font-weight: 400;
 }
 
+/* ============ Hero Banner ============ */
+.hero-banner {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.hero-headline {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--success);
+  margin-bottom: var(--spacing-lg);
+}
+
+.hero-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--success);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.hero-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+}
+
+.hero-stat {
+  text-align: center;
+  padding: var(--spacing-md);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.hero-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.hero-stat-success {
+  color: var(--success);
+}
+
+.hero-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.hero-stat-detail {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ============ Confidence Explanation Callout ============ */
+.confidence-explanation {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: rgba(139, 92, 246, 0.06);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.confidence-explanation-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.confidence-explanation p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: var(--spacing-sm);
+}
+
+.confidence-explanation p:last-child {
+  margin-bottom: 0;
+}
+
+.confidence-explanation strong {
+  color: var(--text-primary);
+}
+
 /* ============ Responsive ============ */
 @media (max-width: 768px) {
   .header {
@@ -1568,6 +1674,10 @@ body {
 
   .doc-tabs {
     flex-wrap: wrap;
+  }
+
+  .hero-stats-row {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .stat-grid {
